@@ -1,0 +1,41 @@
+name: brooklands-hub
+recipe: laravel
+
+config:
+  webroot: public
+  php: "8.4"
+  composer_version: "2"
+  database: mysql:8.0
+  creds:
+    user: laravel
+    password: laravel
+    database: laravel
+
+services:
+  redis:
+    type: redis:7
+    portforward: true
+
+  horizon:
+    type: php:8.4
+    via: cli
+    command: php /app/artisan horizon
+    overrides:
+      environment:
+        APP_ENV: local
+        APP_DEBUG: "true"
+        QUEUE_CONNECTION: redis
+        REDIS_HOST: redis
+        REDIS_PORT: 6379
+
+tooling:
+  artisan:
+    service: appserver
+    cmd: php artisan
+  horizon:
+    service: appserver
+    cmd: php artisan horizon
+
+proxy:
+  appserver:
+    - brooklands-hub.lndo.site
