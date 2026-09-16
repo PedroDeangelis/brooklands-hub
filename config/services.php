@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    'bc' => [
+        'url' => env('BC_URL', 'https://api.businesscentral.dynamics.com'),
+        'tenant_id' => env('BC_TENANT_ID'),
+        'client_id' => env('BC_CLIENT_ID'),
+        'client_secret' => env('BC_CLIENT_SECRET'),
+        'instance' => env('BC_INSTANCE'),
+        'company_id' => env('BC_COMPANY_ID'),
+        'api_version' => env('BC_API_VERSION', 'v2.0'),
+        'http_timeout' => (int) env('BC_HTTP_TIMEOUT', 30),
+        'http_connect_timeout' => (int) env('BC_HTTP_CONNECT_TIMEOUT', 10),
+    ],
+
 ];
