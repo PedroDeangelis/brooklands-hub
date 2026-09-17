@@ -178,6 +178,7 @@ class ProductImporter
             'sales_blocked' => $this->boolean($row, 'salesBlocked'),
             'gtin' => $this->string($row, 'gtin'),
             'item_category_id' => $this->string($row, 'itemCategoryId'),
+            'gppg' => $this->string($row, 'gppg'),
             'bc_modified_at' => $this->timestamp($row, 'lastModifiedDateTime'),
             // Keep the row verbatim so nested collections are not lost.
             'bc_payload' => $row,

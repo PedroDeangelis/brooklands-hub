@@ -4,26 +4,25 @@ namespace App\Console\Commands;
 
 use App\BusinessCentral\BusinessCentralClient;
 use App\BusinessCentral\BusinessCentralException;
-use App\BusinessCentral\ItemsQuery;
-use App\Jobs\ImportBcProduct;
+use App\BusinessCentral\ItemQuantitiesQuery;
+use App\Jobs\ImportBcProductQuantity;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
-#[Signature('bc:import-items {--top=1 : How many items to fetch from Business Central} {--skip=0 : How many items to skip before fetching}')]
-#[Description('Fetch items from Business Central and queue an import job for each one')]
-class ImportBcItemsCommand extends Command
+#[Signature('bc:import-item-quantities {--top=1 : How many quantity rows to fetch from Business Central}')]
+#[Description('Fetch stock figures from Business Central and queue an import job for each one')]
+class ImportBcItemQuantitiesCommand extends Command
 {
     /**
      * Fetches rows and dispatches one job per row.
      *
-     * Normalisation and persistence deliberately live in the job, not here, so the
-     * same path runs whether a row arrives from this command or a future scheduler.
+     * Normalisation and persistence live in the job, not here, so the same path
+     * runs whether a row arrives from this command or a future scheduler.
      */
     public function handle(BusinessCentralClient $client): int
     {
         $top = (int) $this->option('top');
-        $skip = (int) $this->option('skip');
 
         if ($top < 1) {
             $this->error('--top must be a positive integer.');
@@ -31,19 +30,13 @@ class ImportBcItemsCommand extends Command
             return self::FAILURE;
         }
 
-        if ($skip < 0) {
-            $this->error('--skip cannot be negative.');
-
-            return self::FAILURE;
-        }
-
         try {
             $response = $client->getCustom(
-                ItemsQuery::PUBLISHER,
-                ItemsQuery::GROUP,
-                ItemsQuery::VERSION,
-                ItemsQuery::ENTITY_SET,
-                ItemsQuery::forTop($top, $skip),
+                ItemQuantitiesQuery::PUBLISHER,
+                ItemQuantitiesQuery::GROUP,
+                ItemQuantitiesQuery::VERSION,
+                ItemQuantitiesQuery::ENTITY_SET,
+                ItemQuantitiesQuery::forTop($top),
             );
         } catch (BusinessCentralException $e) {
             $this->error($e->getMessage());
@@ -62,7 +55,7 @@ class ImportBcItemsCommand extends Command
         $rows = $response['value'] ?? [];
 
         if (! is_array($rows) || $rows === []) {
-            $this->warn('No items returned from Business Central.');
+            $this->warn('No quantity rows returned from Business Central for the current filter.');
 
             return self::SUCCESS;
         }
@@ -74,7 +67,7 @@ class ImportBcItemsCommand extends Command
                 continue;
             }
 
-            ImportBcProduct::dispatch($row);
+            ImportBcProductQuantity::dispatch($row);
             $dispatched++;
 
             $this->line(sprintf(

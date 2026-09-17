@@ -7,6 +7,11 @@ namespace App\BusinessCentral;
  *
  * Shared by every command that reads items so the test command and the import
  * command can never drift apart.
+ *
+ * This query deliberately carries no website eligibility rules. Filtering them
+ * out in Business Central meant an item that failed one was never fetched, so
+ * nothing could explain its absence from the website. Every item is imported
+ * instead, and App\Products\WebsiteEligibility decides what qualifies.
  */
 final class ItemsQuery
 {
@@ -20,32 +25,37 @@ final class ItemsQuery
 
     /**
      * The fields the product import reads.
+     *
+     * gppg is selected because the finished-goods rule is now evaluated in
+     * Laravel and needs the value stored locally.
      */
     public const SELECT = 'id,number,displayName,displayName2,unitPrice,blocked,salesBlocked,gtin,'
-        .'inventory,weight,lastModifiedDateTime,itemCategoryId,priceListLines,itemAttributes,'
+        .'inventory,weight,lastModifiedDateTime,itemCategoryId,gppg,priceListLines,itemAttributes,'
         .'itemDefaultDimensions,stockkeepingUnits,type';
 
     public const EXPAND = 'priceListLines,itemDefaultDimensions,itemAttributes,stockkeepingUnits';
 
     /**
-     * "Non_x002D_Inventory" is Business Central's OData escaping of "Non-Inventory".
-     */
-    public const FILTER = "unitPrice gt 0 and (type eq 'Inventory' or type eq 'Non_x002D_Inventory') "
-        ."and gppg eq 'FINISHED GOODS' and itemCategoryId ne 'RETIRE'";
-
-    /**
      * Build the OData query for a bounded read of the items page.
+     *
+     * Ordering by lastModifiedDateTime keeps paging stable and is what a
+     * modified-since filter will later page through.
      *
      * @return array<string, scalar>
      */
-    public static function forTop(int $top): array
+    public static function forTop(int $top, int $skip = 0): array
     {
-        return [
+        $query = [
             '$select' => self::SELECT,
             '$expand' => self::EXPAND,
-            '$filter' => self::FILTER,
             '$orderby' => 'lastModifiedDateTime asc',
             '$top' => $top,
         ];
+
+        if ($skip > 0) {
+            $query['$skip'] = $skip;
+        }
+
+        return $query;
     }
 }

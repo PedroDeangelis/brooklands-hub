@@ -4,6 +4,45 @@
 @source '../../storage/framework/views/*.php';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Plus Jakarta Sans', 'Segoe UI', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
+        'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+    /* Ground and ink. */
+    --color-canvas: #f7f9f8;
+    --color-surface: #ffffff;
+    --color-surface-muted: #fbfcfb;
+    --color-ink: #18211d;
+    --color-ink-soft: #3c4641;
+    --color-ink-muted: #5e6863;
+    --color-ink-faint: #6f7872;
+    --color-line: #e6eae8;
+    --color-line-soft: #eef1ef;
+    --color-fill: #f2f5f3;
+    --color-fill-strong: #f3f6f4;
+
+    /* Brand green, used for primary nav, links and focus. */
+    --color-brand: #12805f;
+    --color-brand-ink: #0e6b4f;
+    --color-brand-deep: #0a5540;
+    --color-brand-soft: #e6f4ee;
+
+    /* Status accents, one pair per sync state. */
+    --color-synced: #22a06b;
+    --color-synced-ink: #15694a;
+    --color-synced-soft: #e3f3ea;
+    --color-pending: #e3a02b;
+    --color-pending-ink: #8a5708;
+    --color-pending-soft: #fdf0d5;
+    --color-failed: #d9412f;
+    --color-failed-ink: #a62a22;
+    --color-failed-soft: #fce3e0;
+
+    /* Website eligibility: teal for included, violet for excluded. */
+    --color-eligible: #139089;
+    --color-eligible-ink: #0d5e5a;
+    --color-eligible-soft: #e0f1f1;
+    --color-excluded: #7c5ce0;
+    --color-excluded-ink: #553cb0;
+    --color-excluded-soft: #eee9fc;
 }

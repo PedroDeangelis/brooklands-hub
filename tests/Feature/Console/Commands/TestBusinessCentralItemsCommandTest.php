@@ -100,7 +100,10 @@ class TestBusinessCentralItemsCommandTest extends TestCase
             return $request['$top'] === 1
                 && $request['$expand'] === 'priceListLines,itemDefaultDimensions,itemAttributes,stockkeepingUnits'
                 && str_contains((string) $request['$select'], 'displayName2')
-                && str_contains((string) $request['$filter'], "gppg eq 'FINISHED GOODS'");
+                && str_contains((string) $request['$select'], 'gppg')
+                // Website eligibility is decided in Laravel, so Business Central
+                // must not be asked to filter anything out.
+                && ! isset($request['$filter']);
         });
     }
 

@@ -39,6 +39,7 @@ class SyncLedger
         'sales_blocked',
         'gtin',
         'item_category_id',
+        'gppg',
         'bc_modified_at',
     ];
 

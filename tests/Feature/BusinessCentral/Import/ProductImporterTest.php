@@ -80,12 +80,19 @@ class ProductImporterTest extends TestCase
     {
         // Guards the decimal casts: MySQL returns decimals as strings, so an
         // uncast column would look dirty on every import.
+        //
+        // Asserted on changedFields rather than getChanges(): MySQL rewrites JSON
+        // columns into its own normalised form (keys reordered, spacing added), so
+        // the stored bc_payload string always differs from the one just written
+        // even when the decoded value is identical. That is why bc_payload is
+        // excluded from change detection.
         $importer = app(ProductImporter::class);
         $importer->import($this->row());
 
         $result = $importer->import($this->row());
 
-        $this->assertSame([], $result->product->getChanges());
+        $this->assertSame([], $result->changedFields);
+        $this->assertSame([], array_diff(array_keys($result->product->getChanges()), ['bc_payload']));
     }
 
     public function test_defaults_missing_optional_fields_rather_than_failing(): void

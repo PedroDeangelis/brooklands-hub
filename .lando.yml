@@ -1,5 +1,5 @@
 name: brooklands-hub
-recipe: laravel
+recipe: lemp
 
 config:
   webroot: public
@@ -16,26 +16,55 @@ services:
     type: redis:7
     portforward: true
 
+  # Dedicated queue worker. Mirrors the appserver's PHP so that vendor/, which
+  # Composer resolves against the appserver's version, passes platform_check.
+  # The entrypoint waits for redis and mysql before starting, because
+  # depends_on only waits for the container, not the service inside it.
   horizon:
     type: php:8.4
     via: cli
-    command: php /app/artisan horizon
+    app_mount: cached
+    # Run as www-data so `lando horizon-restart`, which also runs as www-data,
+    # is permitted to signal the master process.
+    command: su www-data -s /bin/sh -c 'sh /app/docker/horizon-entrypoint.sh'
+    depends_on:
+      - database
+      - redis
     overrides:
       environment:
+        # A `via: cli` service gets no .env handling of its own, so the
+        # connection details Horizon needs are set explicitly here.
         APP_ENV: local
         APP_DEBUG: "true"
         QUEUE_CONNECTION: redis
+        REDIS_CLIENT: predis
         REDIS_HOST: redis
-        REDIS_PORT: 6379
+        REDIS_PORT: "6379"
+        DB_CONNECTION: mysql
+        DB_HOST: database
+        DB_PORT: "3306"
+        DB_DATABASE: laravel
+        DB_USERNAME: laravel
+        DB_PASSWORD: laravel
 
 tooling:
   artisan:
     service: appserver
-    cmd: php artisan
-  horizon:
-    service: appserver
-    cmd: php artisan horizon
+    cmd: php /app/artisan
+
+  # Restart the worker after changing queued code, so it picks up new classes.
+  # Runs in the horizon service itself: terminate signals the master process,
+  # which lives in that container, and the entrypoint loop starts a fresh one.
+  horizon-restart:
+    service: horizon
+    cmd: php /app/artisan horizon:terminate
+    description: Restart the Horizon worker so it picks up code changes
+
+  horizon-status:
+    service: horizon
+    cmd: php /app/artisan horizon:status
+    description: Report whether the Horizon worker is running
 
 proxy:
-  appserver:
+  appserver_nginx:
     - brooklands-hub.lndo.site

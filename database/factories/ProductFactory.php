@@ -30,6 +30,7 @@ class ProductFactory extends Factory
             'sales_blocked' => false,
             'gtin' => '',
             'item_category_id' => '',
+            'gppg' => 'FINISHED GOODS',
             'bc_modified_at' => fake()->dateTimeBetween('-1 year'),
             'bc_payload' => [],
         ];
