@@ -3,17 +3,27 @@
 namespace Tests\Feature\Jobs;
 
 use App\Enums\SyncStatus;
+use App\Jobs\DeliverProductToWebsite;
 use App\Jobs\ImportBcProduct;
 use App\Models\Product;
 use App\Models\SyncRecord;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
 use Tests\TestCase;
 
 class ImportBcProductTest extends TestCase
 {
     use LazilyRefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // This class tests importing and the ledger, not delivery.
+        Queue::fake([DeliverProductToWebsite::class]);
+    }
 
     public function test_saves_the_product_when_the_job_runs(): void
     {
@@ -232,8 +242,15 @@ class ImportBcProductTest extends TestCase
             'displayName' => 'Tropical Fish 1 Poly Bin with Lid',
             'type' => 'Inventory',
             'unitPrice' => 2,
+            // Without a qualifying product group the item would be excluded, and
+            // a removal payload carries no field values to change.
+            'gppg' => 'FINISHED GOODS',
             'lastModifiedDateTime' => '2026-03-12T11:06:22.503Z',
-            'itemDefaultDimensions' => [['dimensionCode' => 'DEPARTMENT']],
+            'itemDefaultDimensions' => [[
+                'dimensionCode' => 'DEPARTMENT',
+                'dimensionValueCode' => 'DOG',
+                'dimensionValueName' => 'Dog',
+            ]],
         ];
     }
 }

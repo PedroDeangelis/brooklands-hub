@@ -20,6 +20,14 @@ export default defineConfig({
         tailwindcss(),
     ],
     server: {
+        // Bind on all interfaces so the dev server is reachable from the Lando
+        // containers and from the browser, not just the host loopback.
+        host: '0.0.0.0',
+        // The app is served over https by Lando's proxy, so the asset URLs the
+        // Laravel plugin injects must point at a host the browser can reach.
+        hmr: {
+            host: 'localhost',
+        },
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },

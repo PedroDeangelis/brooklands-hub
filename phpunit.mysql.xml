@@ -36,6 +36,10 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- No real destination in tests: a delivery must be faked explicitly,
+             never sent to whatever the developer's .env happens to point at. -->
+        <env name="WEBSITE_SYNC_URL" value=""/>
+        <env name="WEBSITE_SYNC_SECRET" value="testing-secret"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

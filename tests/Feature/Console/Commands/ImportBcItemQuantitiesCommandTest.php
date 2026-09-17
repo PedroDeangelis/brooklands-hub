@@ -71,8 +71,7 @@ class ImportBcItemQuantitiesCommandTest extends TestCase
         $this->fakeBusinessCentral([$this->row(), $this->row(['id' => 'other-guid', 'number' => 'SF180'])]);
 
         $this->artisan('bc:import-item-quantities', ['--top' => 2])
-            ->expectsOutputToContain('Queued AA27')
-            ->expectsOutputToContain('Dispatched 2 import job(s).')
+            ->expectsOutputToContain('Queued 2 row(s)')
             ->assertExitCode(0);
 
         Queue::assertPushed(ImportBcProductQuantity::class, 2);
@@ -103,7 +102,11 @@ class ImportBcItemQuantitiesCommandTest extends TestCase
             return str_starts_with($request->url(), self::QUANTITIES_URL)
                 && str_contains((string) $request['$select'], 'qtyOnTransferOrder')
                 && str_contains((string) $request['$select'], 'type')
-                && $request['$orderby'] === 'lastModifiedDateTime asc';
+                // Ordered by id: the only total ordering this page offers,
+                // since lastModifiedDateTime is unset on most rows.
+                && $request['$orderby'] === 'id asc'
+                // No website eligibility filtering in the query.
+                && ! isset($request['$filter']);
         });
     }
 

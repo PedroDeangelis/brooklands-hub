@@ -16,6 +16,17 @@ class ProductQuantityImporterTest extends TestCase
     private const BC_ID = '798c5fa0-3d1c-f111-8341-6045bde65a16';
 
     /**
+     * Quantity rows describe a product, so one has to exist for them to attach
+     * to. Cases about the missing-product rule create their own state instead.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Product::factory()->create(['bc_id' => self::BC_ID, 'sku' => 'AA27']);
+    }
+
+    /**
      * A row shaped exactly as Business Central returns it.
      *
      * @param  array<string, mixed>  $overrides
@@ -172,7 +183,7 @@ class ProductQuantityImporterTest extends TestCase
 
     public function test_the_quantity_row_joins_its_product_by_business_central_id(): void
     {
-        $product = Product::factory()->create(['bc_id' => self::BC_ID, 'sku' => 'AA27']);
+        $product = Product::query()->where('bc_id', self::BC_ID)->sole();
 
         $quantity = app(ProductQuantityImporter::class)->import($this->row())->quantity;
 
@@ -180,12 +191,57 @@ class ProductQuantityImporterTest extends TestCase
         $this->assertTrue($quantity->is($product->fresh()->quantity));
     }
 
-    public function test_quantities_may_arrive_before_their_product_exists(): void
+    /**
+     * Stock figures describe a product. Without one there is nothing for them
+     * to describe, so the row is skipped rather than stored as an orphan.
+     */
+    public function test_a_row_without_a_product_is_skipped(): void
     {
-        // The two entities are imported independently, so neither may assume the other.
-        $quantity = app(ProductQuantityImporter::class)->import($this->row())->quantity;
+        Product::query()->delete();
 
-        $this->assertNull($quantity->product);
+        $result = app(ProductQuantityImporter::class)->import($this->row());
+
+        $this->assertTrue($result->skipped);
+        $this->assertNull($result->quantity);
+        $this->assertFalse($result->changed());
+    }
+
+    public function test_a_skipped_row_leaves_no_orphan_quantity(): void
+    {
+        Product::query()->delete();
+
+        app(ProductQuantityImporter::class)->import($this->row());
+
+        $this->assertDatabaseCount('product_quantities', 0);
+    }
+
+    /**
+     * Matching is by Business Central id alone. A SKU match would be a guess,
+     * and guessing here would attach one item's stock to another.
+     */
+    public function test_a_product_sharing_only_the_sku_does_not_count(): void
+    {
+        Product::query()->delete();
+        Product::factory()->create(['bc_id' => 'a-different-guid', 'sku' => 'AA27']);
+
+        $result = app(ProductQuantityImporter::class)->import($this->row());
+
+        $this->assertTrue($result->skipped);
+        $this->assertDatabaseCount('product_quantities', 0);
+    }
+
+    public function test_a_row_is_imported_once_its_product_exists(): void
+    {
+        Product::query()->delete();
+        $this->assertTrue(app(ProductQuantityImporter::class)->import($this->row())->skipped);
+
+        // The next sweep, after the item import has caught up.
+        Product::factory()->create(['bc_id' => self::BC_ID, 'sku' => 'AA27']);
+
+        $result = app(ProductQuantityImporter::class)->import($this->row());
+
+        $this->assertFalse($result->skipped);
+        $this->assertSame(self::BC_ID, $result->quantity->bc_id);
         $this->assertDatabaseCount('product_quantities', 1);
     }
 }

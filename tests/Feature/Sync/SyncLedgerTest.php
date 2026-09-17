@@ -144,6 +144,9 @@ class SyncLedgerTest extends TestCase
             'displayName' => 'Tropical Fish 1 Poly Bin with Lid',
             'type' => 'Inventory',
             'unitPrice' => 2,
+            // Without a qualifying product group the item would be excluded, and
+            // a removal payload carries no field values to change.
+            'gppg' => 'FINISHED GOODS',
             'lastModifiedDateTime' => '2026-03-12T11:06:22.503Z',
             'priceListLines' => [['salesCode' => 'RRP', 'unitPrice' => 14.95]],
             'itemAttributes' => [['itemAttributeName' => 'Size', 'itemAttributeValueName' => 'Small']],

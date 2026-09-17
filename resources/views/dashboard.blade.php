@@ -22,7 +22,18 @@
         </a>
     </div>
 
-    <section aria-label="Summary" class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-5">
+    <section aria-label="Environment" class="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-[14px] border border-line bg-surface-muted px-5 py-3.5">
+        <span class="text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">Environment</span>
+
+        @foreach ($environment as $label => $value)
+            <span class="flex items-baseline gap-2 text-[13px]">
+                <span class="text-ink-muted">{{ $label }}:</span>
+                <span class="font-mono font-medium text-ink">{{ $value }}</span>
+            </span>
+        @endforeach
+    </section>
+
+    <section aria-label="Summary" class="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-6">
         <x-stat-card label="Total Products" :value="$totalProducts" tone="neutral"
                      caption="Imported from Business Central" :href="route('products.index')">
             <x-slot:icon>
@@ -52,6 +63,14 @@
                      :href="route('products.index', [ProductFilter::PARAM_SYNC => SyncStatus::Failed->value])">
             <x-slot:icon>
                 <circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path>
+            </x-slot:icon>
+        </x-stat-card>
+
+        <x-stat-card label="Conflicts" :value="$conflicts" tone="conflict"
+                     caption="Blocked by a website identity clash"
+                     :href="route('products.index', [ProductFilter::PARAM_SYNC => SyncStatus::Conflict->value])">
+            <x-slot:icon>
+                <path d="M12 3 2.5 19.5h19L12 3z"></path><path d="M12 9.5v4"></path><path d="M12 16.5h.01"></path>
             </x-slot:icon>
         </x-stat-card>
 

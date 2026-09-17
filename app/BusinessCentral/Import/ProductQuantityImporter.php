@@ -2,6 +2,7 @@
 
 namespace App\BusinessCentral\Import;
 
+use App\Models\Product;
 use App\Models\ProductQuantity;
 use Carbon\CarbonImmutable;
 use InvalidArgumentException;
@@ -53,6 +54,17 @@ class ProductQuantityImporter
             throw new InvalidArgumentException('Business Central quantity row is missing an "id".');
         }
 
+        // Stock figures belong to a product. Without one there is nothing for
+        // them to describe, so the row is skipped rather than stored as an
+        // orphan: the product may simply not have been imported yet, and the
+        // next sweep picks the row up once it has been.
+        //
+        // Matching is by Business Central id only. A SKU match would be a guess,
+        // and guessing here would attach one item's stock to another.
+        if (! Product::query()->where('bc_id', $bcId)->exists()) {
+            return ProductQuantityImportResult::skipped();
+        }
+
         $quantity = ProductQuantity::firstOrNew(['bc_id' => $bcId]);
         $created = ! $quantity->exists;
 
@@ -67,7 +79,7 @@ class ProductQuantityImporter
 
         $quantity->save();
 
-        return new ProductQuantityImportResult($quantity, $created, $changedFields);
+        return ProductQuantityImportResult::imported($quantity, $created, $changedFields);
     }
 
     /**

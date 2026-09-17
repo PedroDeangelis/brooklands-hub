@@ -36,10 +36,16 @@ class ImportBcProduct implements ShouldQueue
         $result = $importer->import($this->row);
         $product = $result->product;
 
-        // Only a genuine change re-opens delivery. An unchanged re-import must not
-        // reset a record that has already been delivered.
-        if ($result->changed()) {
-            $ledger->markPending($product, $result->changedFields);
+        // The ledger decides whether this amounts to new work. It compares both
+        // halves of the intent, so a product that has only lost its eligibility
+        // is queued for removal even though no Business Central field moved.
+        $record = $ledger->reconcile($product, $result->changedFields);
+
+        // Only genuinely new work is delivered. reconcile() returns null when the
+        // ledger already wants exactly this, which is what stops an unchanged
+        // re-import queueing a delivery on every pass.
+        if ($record !== null) {
+            DeliverProductToWebsite::dispatch($product->bc_id);
         }
 
         Log::info('bc.product.imported', [
@@ -48,7 +54,8 @@ class ImportBcProduct implements ShouldQueue
             'product_id' => $product->id,
             'created' => $result->created,
             'changed_fields' => $result->changedFields,
-            'marked_pending' => $result->changed(),
+            'marked_pending' => $record !== null,
+            'website_action' => $record?->action->value,
         ]);
     }
 

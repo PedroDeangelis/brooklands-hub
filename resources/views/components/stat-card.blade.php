@@ -12,6 +12,7 @@
         'pending' => ['card' => 'border-[#f3e6cc] bg-[#fffbf4]', 'tile' => 'bg-[#fcebcb]', 'icon' => 'text-[#c07a0e]'],
         'synced' => ['card' => 'border-[#dceee4] bg-[#f6fbf8]', 'tile' => 'bg-[#ddf1e6]', 'icon' => 'text-brand'],
         'failed' => ['card' => 'border-[#f4dad6] bg-[#fff7f6]', 'tile' => 'bg-[#fce1dd]', 'icon' => 'text-[#c8322a]'],
+        'conflict' => ['card' => 'border-[#f2ddc4] bg-[#fffaf4]', 'tile' => 'bg-conflict-soft', 'icon' => 'text-conflict-ink'],
         'excluded' => ['card' => 'border-[#e5e0f5] bg-[#f9f7fe]', 'tile' => 'bg-[#ece6fb]', 'icon' => 'text-[#6d4fd1]'],
     ][$tone];
 @endphp

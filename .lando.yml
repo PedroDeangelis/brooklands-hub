@@ -24,9 +24,11 @@ services:
     type: php:8.4
     via: cli
     app_mount: cached
-    # Run as www-data so `lando horizon-restart`, which also runs as www-data,
-    # is permitted to signal the master process.
-    command: su www-data -s /bin/sh -c 'sh /app/docker/horizon-entrypoint.sh'
+    # Starts as root to trust Lando's CA (so Horizon can reach *.lndo.site over
+    # HTTPS), then drops to www-data and runs the worker. Both steps live in the
+    # one script because Lando passes this straight to docker-php-entrypoint,
+    # which does not interpret shell operators like `&&`.
+    command: sh /app/docker/horizon-ca.sh
     depends_on:
       - database
       - redis

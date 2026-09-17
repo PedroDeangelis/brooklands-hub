@@ -7,6 +7,7 @@ use App\Products\ProductFilter;
 use App\Products\ProductWebsiteStateBuilder;
 use App\Products\WebsiteEligibility;
 use App\Sync\DeliveryStatus;
+use App\Sync\SyncLedger;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -17,6 +18,7 @@ class ProductController extends Controller
     public function __construct(
         private readonly WebsiteEligibility $eligibility,
         private readonly ProductWebsiteStateBuilder $websiteState,
+        private readonly SyncLedger $ledger,
     ) {}
 
     public function index(Request $request): View
@@ -48,6 +50,8 @@ class ProductController extends Controller
             'websiteState' => $websiteState,
             'syncRecord' => $syncRecord,
             'deliveryStatus' => DeliveryStatus::for($product, $this->eligibility, $syncRecord),
+            'desiredState' => $this->ledger->desiredState($product),
+            'plan' => $this->ledger->plan($product),
         ]);
     }
 }

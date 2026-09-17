@@ -41,7 +41,7 @@ class ImportBcItemsCommandTest extends TestCase
         $this->fakeBusinessCentral([$this->row()]);
 
         $this->artisan('bc:import-items', ['--top' => 1])
-            ->expectsOutputToContain('Queued POLY1')
+            ->expectsOutputToContain('Queued 1 item(s)')
             ->assertExitCode(0);
 
         Queue::assertPushed(ImportBcProduct::class, function (ImportBcProduct $job): bool {

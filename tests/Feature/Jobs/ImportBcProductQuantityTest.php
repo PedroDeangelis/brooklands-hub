@@ -4,7 +4,9 @@ namespace Tests\Feature\Jobs;
 
 use App\BusinessCentral\Import\ProductQuantityImporter;
 use App\Jobs\ImportBcProductQuantity;
+use App\Models\Product;
 use App\Models\ProductQuantity;
+use App\Sync\SyncLedger;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use InvalidArgumentException;
@@ -13,6 +15,19 @@ use Tests\TestCase;
 class ImportBcProductQuantityTest extends TestCase
 {
     use LazilyRefreshDatabase;
+
+    /**
+     * Quantity rows describe a product, so one has to exist for them to attach to.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Product::factory()->create([
+            'bc_id' => '798c5fa0-3d1c-f111-8341-6045bde65a16',
+            'sku' => 'AA27',
+        ]);
+    }
 
     /**
      * @param  array<string, mixed>  $overrides
@@ -36,6 +51,7 @@ class ImportBcProductQuantityTest extends TestCase
     {
         (new ImportBcProductQuantity($this->row()))->handle(
             app(ProductQuantityImporter::class),
+            app(SyncLedger::class),
         );
 
         $this->assertDatabaseCount('product_quantities', 1);
@@ -46,8 +62,8 @@ class ImportBcProductQuantityTest extends TestCase
     {
         $importer = app(ProductQuantityImporter::class);
 
-        (new ImportBcProductQuantity($this->row()))->handle($importer);
-        (new ImportBcProductQuantity($this->row(['inventory' => 7])))->handle($importer);
+        (new ImportBcProductQuantity($this->row()))->handle($importer, app(SyncLedger::class));
+        (new ImportBcProductQuantity($this->row(['inventory' => 7])))->handle($importer, app(SyncLedger::class));
 
         $this->assertDatabaseCount('product_quantities', 1);
         $this->assertSame('7.00000', ProductQuantity::first()->inventory);
@@ -77,6 +93,7 @@ class ImportBcProductQuantityTest extends TestCase
 
         (new ImportBcProductQuantity($this->row(['id' => ''])))->handle(
             app(ProductQuantityImporter::class),
+            app(SyncLedger::class),
         );
     }
 }

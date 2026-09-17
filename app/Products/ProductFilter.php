@@ -5,6 +5,7 @@ namespace App\Products;
 use App\Enums\SyncStatus;
 use App\Models\Product;
 use App\Sync\SyncLedger;
+use App\Sync\WebsiteAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -27,15 +28,17 @@ final readonly class ProductFilter
 
     public const PARAM_REASON = 'reason';
 
+    public const PARAM_ACTION = 'action';
+
     public const WEBSITE_ELIGIBLE = 'eligible';
 
     public const WEBSITE_EXCLUDED = 'excluded';
 
     /**
-     * Delivery states that can be filtered on.
+     * Delivery states that are conclusions rather than ledger statuses.
      *
-     * "not_applicable" is not a ledger status but a conclusion about excluded
-     * products, so it is resolved through eligibility rather than the ledger.
+     * Both describe a product with no ledger row at all, so they are resolved
+     * through eligibility instead.
      */
     public const SYNC_NOT_APPLICABLE = 'not_applicable';
 
@@ -46,6 +49,7 @@ final readonly class ProductFilter
         public ?string $websiteStatus,
         public ?string $syncStatus,
         public ?ExclusionReason $reason,
+        public ?WebsiteAction $action,
     ) {}
 
     public static function fromRequest(Request $request): self
@@ -60,10 +64,12 @@ final readonly class ProductFilter
                 SyncStatus::Pending->value,
                 SyncStatus::Synced->value,
                 SyncStatus::Failed->value,
+                SyncStatus::Conflict->value,
                 self::SYNC_NOT_APPLICABLE,
                 self::SYNC_NOT_SYNCED,
             ]),
             reason: ExclusionReason::tryFrom((string) $request->query(self::PARAM_REASON, '')),
+            action: WebsiteAction::tryFrom((string) $request->query(self::PARAM_ACTION, '')),
         );
     }
 
@@ -87,7 +93,8 @@ final readonly class ProductFilter
         return $this->search !== ''
             || $this->websiteStatus !== null
             || $this->syncStatus !== null
-            || $this->reason !== null;
+            || $this->reason !== null
+            || $this->action !== null;
     }
 
     /**
@@ -118,6 +125,10 @@ final readonly class ProductFilter
             $query = $this->applySyncStatus($query, $eligibility);
         }
 
+        if ($this->action !== null) {
+            $query = $this->applyAction($query, $eligibility);
+        }
+
         return $query;
     }
 
@@ -140,31 +151,53 @@ final readonly class ProductFilter
     /**
      * Narrow to a delivery state.
      *
-     * Delivery is only meaningful for a product that qualifies for the website,
-     * so every ledger state is restricted to eligible products. That keeps the
-     * list agreeing with the status shown on each product's detail page.
+     * Ledger states are read straight from the ledger and are NOT restricted to
+     * eligible products: an excluded product that was delivered while it
+     * qualified is pending a removal, and filtering it out here would hide
+     * exactly the work someone came to this page to find.
+     *
+     * The two states that have no ledger row of their own are derived instead.
      *
      * @param  Builder<Product>  $query
      * @return Builder<Product>
      */
     private function applySyncStatus(Builder $query, WebsiteEligibility $eligibility): Builder
     {
+        $withoutLedgerRow = fn (Builder $query): Builder => $query->whereDoesntHave(
+            'syncRecords',
+            fn (Builder $records): Builder => $records->where('channel', SyncLedger::CHANNEL_ITEMS),
+        );
+
+        // Nothing to deliver: never queued, and not wanted on the website.
         if ($this->syncStatus === self::SYNC_NOT_APPLICABLE) {
-            return $eligibility->scopeExcluded($query);
+            return $withoutLedgerRow($eligibility->scopeExcluded($query));
         }
 
-        $query = $eligibility->scopeEligible($query);
-
+        // Wanted on the website but never queued.
         if ($this->syncStatus === self::SYNC_NOT_SYNCED) {
-            return $query->whereDoesntHave(
-                'syncRecords',
-                fn (Builder $records): Builder => $records->where('channel', SyncLedger::CHANNEL_ITEMS),
-            );
+            return $withoutLedgerRow($eligibility->scopeEligible($query));
         }
 
         return $query->whereHas('syncRecords', fn (Builder $records): Builder => $records
             ->where('channel', SyncLedger::CHANNEL_ITEMS)
             ->where('status', $this->syncStatus));
+    }
+
+    /**
+     * Narrow to the website action a product currently wants.
+     *
+     * The desired action follows from eligibility, so it is resolved from the
+     * product rather than from the ledger: a product that has never been
+     * queued still wants something.
+     *
+     * @param  Builder<Product>  $query
+     * @return Builder<Product>
+     */
+    private function applyAction(Builder $query, WebsiteEligibility $eligibility): Builder
+    {
+        return $this->action === WebsiteAction::Remove
+            ? $eligibility->scopeExcluded($query)
+            : $eligibility->scopeEligible($query);
     }
 
     /**
@@ -200,6 +233,10 @@ final readonly class ProductFilter
             $chips[] = ['label' => 'Reason', 'value' => $this->reason->label(), 'param' => self::PARAM_REASON];
         }
 
+        if ($this->action !== null) {
+            $chips[] = ['label' => 'Action', 'value' => $this->action->label(), 'param' => self::PARAM_ACTION];
+        }
+
         return $chips;
     }
 
@@ -224,6 +261,7 @@ final readonly class ProductFilter
             self::PARAM_WEBSITE => $this->websiteStatus,
             self::PARAM_SYNC => $this->syncStatus,
             self::PARAM_REASON => $this->reason?->value,
+            self::PARAM_ACTION => $this->action?->value,
         ], fn (?string $value): bool => $value !== null && $value !== '');
     }
 

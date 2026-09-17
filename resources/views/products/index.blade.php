@@ -81,7 +81,8 @@
                         <th class="px-3.5 text-right font-medium">Price</th>
                         <th class="px-3.5 text-right font-medium">Inventory</th>
                         <th class="px-3.5 font-medium">Website</th>
-                        <th class="px-3.5 font-medium">Sync</th>
+                        <th class="px-3.5 font-medium">Desired</th>
+                        <th class="px-3.5 font-medium">Delivery</th>
                         <th class="rounded-r-[9px] px-3.5 font-medium">BC modified</th>
                     </tr>
                 </thead>
@@ -91,6 +92,7 @@
                         @php
                             $status = $eligibility->for($product);
                             $delivery = App\Sync\DeliveryStatus::for($product, $eligibility, $product->itemsSyncRecord);
+                            $desired = App\Sync\DesiredWebsiteState::from($status);
                         @endphp
 
                         <tr class="border-b border-line-soft hover:bg-[#f7faf8]">
@@ -115,6 +117,9 @@
                                 </span>
                             </td>
                             <td class="px-3.5">
+                                <x-action-badge :action="$desired->action" />
+                            </td>
+                            <td class="px-3.5">
                                 <x-status-badge :status="$delivery" />
                             </td>
                             <td class="px-3.5 text-[13px] text-ink-muted tabular-nums">
@@ -123,7 +128,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="px-6 py-14 text-center">
+                            <td colspan="8" class="px-6 py-14 text-center">
                                 <span class="flex flex-col items-center gap-1.5">
                                     <span class="text-[15px] font-semibold">No products match</span>
                                     <span class="text-sm text-ink-muted">

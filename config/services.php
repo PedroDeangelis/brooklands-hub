@@ -35,6 +35,17 @@ return [
         ],
     ],
 
+    'website' => [
+        // The destination the delivery layer posts to. Left unset until the
+        // rebuilt receiver exists, which makes the client fail loudly rather
+        // than quietly posting nowhere.
+        'url' => env('WEBSITE_SYNC_URL'),
+        // Shared with the website. Requests are signed, never bearer-authenticated.
+        'secret' => env('WEBSITE_SYNC_SECRET'),
+        'timeout' => (int) env('WEBSITE_SYNC_TIMEOUT', 30),
+        'connect_timeout' => (int) env('WEBSITE_SYNC_CONNECT_TIMEOUT', 10),
+    ],
+
     'bc' => [
         'url' => env('BC_URL', 'https://api.businesscentral.dynamics.com'),
         'tenant_id' => env('BC_TENANT_ID'),

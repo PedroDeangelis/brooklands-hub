@@ -33,6 +33,7 @@
         <div class="flex shrink-0 items-center gap-2 pb-1">
             <x-eligibility-badge :eligible="$eligibility->eligible" :label="$eligibility->label()"
                                  class="!px-3 !py-1.5 !text-[13px]" />
+            <x-action-badge :action="$desiredState->action" class="!px-3 !py-1.5 !text-[13px]" />
             <x-status-badge :status="$deliveryStatus" class="!px-3 !py-1.5 !text-[13px]" />
         </div>
     </header>
@@ -149,14 +150,79 @@
                             <path d="M18 2v4h-4"></path><path d="M6 22v-4h4"></path>
                         </svg>
                     </span>
-                    <h2 id="sync-h" class="text-[17px] font-bold">Sync information</h2>
+                    <h2 id="sync-h" class="text-[17px] font-bold">Website delivery</h2>
                 </span>
                 <span class="font-mono text-xs text-ink-muted">sync_records</span>
             </div>
 
+            @if ($syncRecord?->conflict_details)
+                <div class="mx-6 mt-4 rounded-[10px] border border-[#f2ddc4] bg-[#fffaf4] px-5 py-4">
+                    <span class="flex items-center gap-2 text-[15px] font-bold text-conflict-ink">
+                        <svg class="size-4.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 3 2.5 19.5h19L12 3z"></path><path d="M12 9.5v4"></path><path d="M12 16.5h.01"></path>
+                        </svg>
+                        Why can&rsquo;t this product sync?
+                    </span>
+
+                    <ul class="mt-3 flex flex-col gap-3.5">
+                        @foreach ($syncRecord->conflict_details as $conflict)
+                            <li class="flex flex-col gap-1.5">
+                                <span class="text-sm text-ink">
+                                    @if (($conflict['field'] ?? '') === 'gtin')
+                                        GTIN <span class="font-mono font-semibold">{{ $conflict['value'] ?? '' }}</span>
+                                    @else
+                                        SKU <span class="font-mono font-semibold">&quot;{{ $conflict['value'] ?? '' }}&quot;</span>
+                                    @endif
+
+                                    @if (! empty($conflict['existing_wp_id']))
+                                        is already used by WordPress product
+                                        <span class="font-mono font-semibold">#{{ $conflict['existing_wp_id'] }}</span>.
+                                    @else
+                                        {{ $conflict['message'] ?? 'is already in use.' }}
+                                    @endif
+                                </span>
+
+                                @if (! empty($conflict['existing_bc_id']))
+                                    <span class="grid gap-x-4 gap-y-0.5 text-[12.5px] sm:grid-cols-[auto_1fr]">
+                                        <span class="text-ink-muted">Laravel BC ID:</span>
+                                        <span class="font-mono break-all text-ink-soft">{{ $product->bc_id }}</span>
+                                        <span class="text-ink-muted">Existing WordPress BC ID:</span>
+                                        <span class="font-mono break-all text-ink-soft">{{ $conflict['existing_bc_id'] }}</span>
+                                    </span>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+
+                    <p class="mt-3.5 text-[12.5px] text-ink-muted">
+                        Nothing was changed on the website, and the product is still queued to send.
+                        This needs the data corrected rather than another attempt.
+                    </p>
+                </div>
+            @endif
+
             <dl class="flex flex-col px-6 pt-1.5 pb-5">
                 <div class="flex items-center justify-between gap-4 border-b border-line-soft py-3">
-                    <dt class="text-[13px] text-ink-muted">Sync status</dt>
+                    <dt class="flex flex-col gap-0.5">
+                        <span class="text-[13px] text-ink-muted">Desired website state</span>
+                        <span class="text-[11px] text-ink-faint">What the website should hold</span>
+                    </dt>
+                    <dd><x-action-badge :action="$desiredState->action" /></dd>
+                </div>
+
+                @if ($desiredState->reason() !== null)
+                    <div class="flex flex-col gap-1.5 border-b border-line-soft py-3">
+                        <dt class="text-[13px] text-ink-muted">Reason</dt>
+                        <dd class="text-sm text-ink-soft">{{ $desiredState->reason() }}</dd>
+                    </div>
+                @endif
+
+                <div class="flex items-center justify-between gap-4 border-b border-line-soft py-3">
+                    <dt class="flex flex-col gap-0.5">
+                        <span class="text-[13px] text-ink-muted">Delivery status</span>
+                        <span class="text-[11px] text-ink-faint">Whether the website matches</span>
+                    </dt>
                     <dd><x-status-badge :status="$deliveryStatus" /></dd>
                 </div>
 
@@ -197,7 +263,12 @@
                     </div>
 
                     <div class="flex items-center justify-between gap-4 border-b border-line-soft py-3">
-                        <dt class="text-[13px] text-ink-muted">Synced at</dt>
+                        <dt class="text-[13px] text-ink-muted">Delivery attempts</dt>
+                        <dd class="text-sm tabular-nums text-ink">{{ $syncRecord->attempts }}</dd>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-4 border-b border-line-soft py-3">
+                        <dt class="text-[13px] text-ink-muted">Last delivered</dt>
                         <dd @class([
                             'text-sm tabular-nums',
                             'text-ink' => $syncRecord->synced_at,
@@ -390,6 +461,84 @@
                 @endif
             </div>
         </div>
+    </section>
+
+    <section aria-labelledby="preview-h" class="flex flex-col rounded-[14px] border border-line bg-surface">
+        <div class="flex items-center justify-between gap-4 border-b border-line-soft px-6 py-4.5">
+            <span class="flex items-center gap-3">
+                <span class="flex size-8.5 items-center justify-center rounded-[9px] bg-brand-soft">
+                    <svg class="size-4.5 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>
+                    </svg>
+                </span>
+                <span class="flex flex-col">
+                    <h2 id="preview-h" class="text-[17px] font-bold">Delivery preview</h2>
+                    <span class="text-[13px] text-ink-muted">
+                        What would be sent to the website, calculated but never sent
+                    </span>
+                </span>
+            </span>
+            <span class="font-mono text-xs text-ink-muted max-sm:hidden">read-only</span>
+        </div>
+
+        <dl class="grid grid-cols-1 sm:grid-cols-3">
+            <div class="flex flex-col gap-1.5 border-b border-line-soft px-6 py-4">
+                <dt class="text-xs font-medium text-ink-muted">Desired action</dt>
+                <dd><x-action-badge :action="$plan->action" /></dd>
+            </div>
+
+            <div class="flex flex-col gap-1.5 border-b border-line-soft px-6 py-4">
+                <dt class="text-xs font-medium text-ink-muted">Delivery type</dt>
+                <dd class="flex flex-col gap-1">
+                    <span class="text-[15px] font-semibold text-ink">{{ $plan->type->label() }}</span>
+                    <span class="text-[13px] text-ink-muted">{{ $plan->type->explain() }}</span>
+                </dd>
+            </div>
+
+            <div class="flex flex-col gap-1.5 border-b border-line-soft px-6 py-4">
+                <dt class="text-xs font-medium text-ink-muted">Full payload hash</dt>
+                <dd class="font-mono text-xs leading-relaxed break-all text-ink-soft">{{ $plan->payloadHash }}</dd>
+            </div>
+        </dl>
+
+        <div class="grid grid-cols-1 gap-5 px-6 py-5 xl:grid-cols-2">
+            <div class="flex min-w-0 flex-col gap-2.5">
+                <span class="text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">
+                    Payload that would be sent now
+                    @if ($plan->type !== App\Sync\Payload\DeliveryType::None)
+                        <span class="ml-1 font-mono text-[11px] normal-case">
+                            ({{ $plan->diff->count() }} {{ Str::plural('field', $plan->diff->count()) }})
+                        </span>
+                    @endif
+                </span>
+
+                @if ($plan->sendsAnything())
+                    <pre class="overflow-x-auto rounded-[10px] bg-[#17211d] p-5 font-mono text-[12.5px] leading-relaxed text-[#d8e0db]">{{ json_encode($plan->envelope, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
+                @else
+                    <p class="rounded-[10px] border border-line bg-fill px-4 py-3.5 text-sm text-ink-muted">
+                        Nothing to send. The website already holds the desired payload.
+                    </p>
+                @endif
+            </div>
+
+            <div class="flex min-w-0 flex-col gap-2.5">
+                <span class="text-xs font-bold tracking-[0.06em] text-ink-muted uppercase">
+                    Full desired payload
+                </span>
+
+                <pre class="overflow-x-auto rounded-[10px] bg-[#17211d] p-5 font-mono text-[12.5px] leading-relaxed text-[#d8e0db]">{{ json_encode($plan->fullPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
+            </div>
+        </div>
+
+        @if ($plan->type === App\Sync\Payload\DeliveryType::Partial)
+            <p class="border-t border-line-soft px-6 py-4 text-[13px] text-ink-muted">
+                Changed website fields:
+                <span class="font-mono text-ink-soft">{{ implode(', ', $plan->diff->changedFields) }}</span>.
+                Nested values ({{ implode(', ', App\Sync\Payload\PayloadDiff::ATOMIC_FIELDS) }})
+                are compared and sent whole.
+            </p>
+        @endif
     </section>
 
     <details class="group flex flex-col overflow-hidden rounded-[14px] border border-line bg-surface" open>

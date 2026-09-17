@@ -13,7 +13,9 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __construct(private readonly WebsiteEligibility $eligibility) {}
+    public function __construct(
+        private readonly WebsiteEligibility $eligibility,
+    ) {}
 
     public function __invoke(): View
     {
@@ -22,9 +24,32 @@ class DashboardController extends Controller
             'pending' => $this->countByStatus(SyncStatus::Pending),
             'synced' => $this->countByStatus(SyncStatus::Synced),
             'failed' => $this->countByStatus(SyncStatus::Failed),
+            'conflicts' => $this->countByStatus(SyncStatus::Conflict),
             'excluded' => $this->eligibility->scopeExcluded(Product::query())->count(),
             'exclusionBreakdown' => $this->exclusionBreakdown(),
+            'environment' => $this->environment(),
         ]);
+    }
+
+    /**
+     * Where this instance reads from and writes to.
+     *
+     * Shown because the two can disagree: a Sandbox catalogue delivered against
+     * a Production-derived website produces identity conflicts that look like
+     * bugs until you can see which environments are paired. Names and hosts
+     * only — never a secret or a credential.
+     *
+     * @return array<string, string>
+     */
+    private function environment(): array
+    {
+        $websiteUrl = (string) config('services.website.url');
+        $host = $websiteUrl === '' ? 'not configured' : (parse_url($websiteUrl, PHP_URL_HOST) ?: $websiteUrl);
+
+        return [
+            'Business Central' => (string) (config('services.bc.instance') ?: 'not configured'),
+            'Website' => $host,
+        ];
     }
 
     /**

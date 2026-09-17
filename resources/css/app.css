@@ -38,6 +38,12 @@
     --color-failed-ink: #a62a22;
     --color-failed-soft: #fce3e0;
 
+    /* Delivery conflict: amber-brown, distinct from both failure red and
+       exclusion violet, because a conflict is neither. */
+    --color-conflict: #c2680f;
+    --color-conflict-ink: #8f4a06;
+    --color-conflict-soft: #fbe8d4;
+
     /* Website eligibility: teal for included, violet for excluded. */
     --color-eligible: #139089;
     --color-eligible-ink: #0d5e5a;

@@ -128,7 +128,9 @@ class IneligibleProductsAreStillImportedTest extends TestCase
         $this->assertSame(25, ItemsQuery::forTop(25)['$top']);
         $this->assertSame(100, ItemsQuery::forTop(25, 100)['$skip']);
         $this->assertArrayNotHasKey('$skip', ItemsQuery::forTop(25));
-        $this->assertSame('lastModifiedDateTime asc', ItemsQuery::forTop(25)['$orderby']);
+        // Ordered by timestamp with an id tiebreaker, so $skip paging is stable
+        // across the many products that share a modification second.
+        $this->assertSame('lastModifiedDateTime asc,id asc', ItemsQuery::forTop(25)['$orderby']);
     }
 
     public function test_the_import_command_sends_no_filter_and_pages_with_skip(): void

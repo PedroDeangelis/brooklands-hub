@@ -8,53 +8,72 @@ use App\Models\SyncRecord;
 use App\Products\WebsiteEligibility;
 
 /**
- * How a product stands with respect to website delivery.
+ * Whether the website already matches what we want it to hold.
  *
- * A product that does not qualify for the website has nothing to deliver, so it
- * has no sync status in the usual sense. Reporting it as "pending" would put it
- * in a queue it will never leave, and reporting it as "failed" would suggest
- * something went wrong. It is reported as not applicable instead: being
- * excluded from the website is a valid outcome, not an error.
+ * This is deliberately separate from the desired website state. The desired
+ * state says what the website should end up with; this says how far away it
+ * currently is. A product can want removal and still be waiting for it.
+ *
+ * "Not applicable" therefore means something narrow: there is nothing to do
+ * because the website has never held this product and should not hold it. It
+ * must never be used for a product that was delivered while it qualified and
+ * has since stopped qualifying, because that product still needs taking down.
  */
 enum DeliveryStatus: string
 {
-    /** The product qualifies but has not been delivered yet. */
+    /** The desired state has not reached the website yet. */
     case Pending = 'pending';
 
-    /** The product has been delivered to the website. */
+    /** A delivery job is working on it right now. */
+    case Syncing = 'syncing';
+
+    /** The website matches the desired state. */
     case Synced = 'synced';
 
     /** Delivery was attempted and failed. */
     case Failed = 'failed';
 
-    /** The product does not qualify for the website, so nothing is delivered. */
+    /**
+     * The website cannot take this product as addressed.
+     *
+     * Three different things, deliberately kept apart: Failed is something going
+     * wrong, NotApplicable is Laravel deciding the product does not belong on
+     * the website, and Conflict is Laravel wanting it there while the website
+     * already has that SKU or GTIN on a different product.
+     */
+    case Conflict = 'conflict';
+
+    /** Nothing to deliver: never sent, and not wanted on the website. */
     case NotApplicable = 'not_applicable';
 
-    /** The product qualifies but has never been considered for delivery. */
+    /** Wanted on the website but never yet considered for delivery. */
     case NotSynced = 'not_synced';
 
     /**
-     * Decide the delivery status of a product from its eligibility and ledger row.
+     * Decide how far the website is from the desired state for a product.
      *
-     * Eligibility is checked first: an excluded product is not applicable even
-     * if it carries a ledger row from a time when it still qualified.
+     * The ledger row is authoritative when one exists: it records what was
+     * actually asked for and what came back. Eligibility only decides the
+     * fallback for a product the ledger has never seen.
      */
     public static function for(Product $product, WebsiteEligibility $eligibility, ?SyncRecord $record): self
     {
-        if (! $eligibility->isEligible($product)) {
-            return self::NotApplicable;
+        if ($record === null) {
+            // Never queued. An excluded product that has never been delivered
+            // genuinely has nothing to do; an eligible one is simply waiting.
+            return $eligibility->isEligible($product) ? self::NotSynced : self::NotApplicable;
         }
 
-        return self::fromRecord($record);
-    }
-
-    public static function fromRecord(?SyncRecord $record): self
-    {
-        return match ($record?->status) {
+        return match ($record->status) {
             SyncStatus::Pending => self::Pending,
-            SyncStatus::Synced => self::Synced,
+            SyncStatus::Syncing => self::Syncing,
             SyncStatus::Failed => self::Failed,
-            default => self::NotSynced,
+            SyncStatus::Conflict => self::Conflict,
+            // A synced row whose intent has since moved on is not up to date.
+            // This is the case that must not collapse into "not applicable":
+            // a product removed from the catalogue was delivered once and now
+            // needs a removal that has not happened yet.
+            SyncStatus::Synced => $record->isDelivered() ? self::Synced : self::Pending,
         };
     }
 
@@ -62,8 +81,10 @@ enum DeliveryStatus: string
     {
         return match ($this) {
             self::Pending => 'Pending',
+            self::Syncing => 'Syncing',
             self::Synced => 'Synced',
             self::Failed => 'Failed',
+            self::Conflict => 'Conflict',
             self::NotApplicable => 'Not applicable',
             self::NotSynced => 'Not synced',
         };
@@ -72,22 +93,36 @@ enum DeliveryStatus: string
     /**
      * Whether this status represents a problem needing attention.
      *
-     * Only a genuine delivery failure does. An excluded product is a business
-     * decision, and an undelivered one is simply waiting.
+     * Only a genuine delivery failure does. Everything else is either done or
+     * on its way.
      */
     public function isProblem(): bool
     {
-        return $this === self::Failed;
+        return $this === self::Failed || $this === self::Conflict;
+    }
+
+    /**
+     * Whether the website still has to be told something.
+     */
+    public function needsDelivery(): bool
+    {
+        return $this === self::Pending
+            || $this === self::Syncing
+            || $this === self::Failed
+            || $this === self::Conflict
+            || $this === self::NotSynced;
     }
 
     public function explain(): string
     {
         return match ($this) {
-            self::Pending => 'Waiting to be delivered to the website.',
-            self::Synced => 'Delivered to the website.',
+            self::Pending => 'Waiting for the desired website state to be delivered.',
+            self::Syncing => 'A delivery is in progress.',
+            self::Synced => 'The website matches the desired state.',
             self::Failed => 'Delivery to the website failed.',
-            self::NotApplicable => 'Excluded from the website, so there is nothing to deliver.',
-            self::NotSynced => 'Qualifies for the website but has not been queued for delivery.',
+            self::Conflict => 'The website already uses this SKU or GTIN for a different product.',
+            self::NotApplicable => 'Never delivered, and not wanted on the website.',
+            self::NotSynced => 'Wanted on the website but not yet queued for delivery.',
         };
     }
 }

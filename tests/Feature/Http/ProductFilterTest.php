@@ -8,6 +8,7 @@ use App\Models\SyncRecord;
 use App\Products\ExclusionReason;
 use App\Products\ProductFilter;
 use App\Sync\SyncLedger;
+use App\Sync\WebsiteAction;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Tests\TestCase;
 
@@ -159,24 +160,55 @@ class ProductFilterTest extends TestCase
     }
 
     /**
-     * An excluded product has nothing to deliver, so it must not turn up under
-     * a delivery state even while carrying a ledger row from when it qualified.
+     * An excluded product pending removal is real outstanding work, so the
+     * pending filter must list it rather than hiding it behind eligibility.
      */
-    public function test_a_sync_status_filter_never_lists_an_excluded_product(): void
+    public function test_the_pending_filter_lists_an_excluded_product_awaiting_removal(): void
     {
         $excluded = $this->product(['sku' => 'STALE1', 'price' => 0]);
         SyncRecord::factory()->create([
             'bc_id' => $excluded->bc_id,
             'channel' => SyncLedger::CHANNEL_ITEMS,
             'status' => SyncStatus::Pending,
+            'action' => WebsiteAction::Remove,
         ]);
 
-        $this->assertSame([], $this->listedSkus(
+        $this->assertSame(['STALE1'], $this->listedSkus(
             route('products.index', [ProductFilter::PARAM_SYNC => 'pending']),
         ));
+    }
 
-        $this->assertSame(['STALE1'], $this->listedSkus(
+    /**
+     * Not applicable is for products the ledger has never seen: anything with a
+     * row has work behind it, even if that work is a removal.
+     */
+    public function test_the_not_applicable_filter_only_lists_products_never_queued(): void
+    {
+        $this->product(['sku' => 'NEVER1', 'price' => 0]);
+
+        $queued = $this->product(['sku' => 'STALE1', 'price' => 0]);
+        SyncRecord::factory()->create([
+            'bc_id' => $queued->bc_id,
+            'channel' => SyncLedger::CHANNEL_ITEMS,
+            'status' => SyncStatus::Pending,
+            'action' => WebsiteAction::Remove,
+        ]);
+
+        $this->assertSame(['NEVER1'], $this->listedSkus(
             route('products.index', [ProductFilter::PARAM_SYNC => ProductFilter::SYNC_NOT_APPLICABLE]),
+        ));
+    }
+
+    public function test_the_action_filter_splits_upserts_from_removals(): void
+    {
+        $this->product(['sku' => 'KEEP1']);
+        $this->product(['sku' => 'DROP1', 'price' => 0]);
+
+        $this->assertSame(['KEEP1'], $this->listedSkus(
+            route('products.index', [ProductFilter::PARAM_ACTION => WebsiteAction::Upsert->value]),
+        ));
+        $this->assertSame(['DROP1'], $this->listedSkus(
+            route('products.index', [ProductFilter::PARAM_ACTION => WebsiteAction::Remove->value]),
         ));
     }
 
