@@ -36,6 +36,26 @@ class SyncCheckpoint extends Model
 
     public const ENTITY_ITEM_QUANTITIES = 'item_quantities';
 
+    public const ENTITY_ITEM_MARKETING_TEXT = 'item_marketing_text';
+
+    public const ENTITY_CAMPAIGNS = 'campaigns';
+
+    public const ENTITY_CUSTOMERS = 'customers';
+
+    public const ENTITY_SHIP_TO_ADDRESSES = 'ship_to_addresses';
+
+    public const ENTITY_CONTACTS = 'contacts';
+
+    public const ENTITY_CONTACT_LINKS = 'contact_links';
+
+    public const ENTITY_SALES_ORDERS = 'sales_orders';
+
+    public const ENTITY_SALES_INVOICES = 'sales_invoices';
+
+    public const ENTITY_SALES_CREDIT_MEMOS = 'sales_credit_memos';
+
+    public const ENTITY_DOCUMENT_ATTACHMENTS = 'document_attachments';
+
     /**
      * Written with milliseconds, so the checkpoint keeps the precision
      * Business Central sent.

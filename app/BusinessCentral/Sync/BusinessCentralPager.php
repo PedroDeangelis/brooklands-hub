@@ -47,6 +47,56 @@ class BusinessCentralPager
         ?int $limit = null,
         ?Closure $onPage = null,
     ): PagedFetchResult {
+        return $this->paginate(
+            fn (array $pageQuery): array => $this->client->getCustom($publisher, $group, $version, $entitySet, $pageQuery),
+            $query,
+            $onRow,
+            $pageSize,
+            $limit,
+            $onPage,
+        );
+    }
+
+    /**
+     * Page through a standard API result set, handing each row to the caller.
+     *
+     * Identical to fetch() except for where the request goes: the standard
+     * pages have no publisher, group or version of their own.
+     *
+     * @param  Closure(int $pageSize, int $skip): array<string, scalar>  $query
+     * @param  Closure(array<string, mixed> $row): void  $onRow
+     */
+    public function fetchStandard(
+        string $entitySet,
+        Closure $query,
+        Closure $onRow,
+        int $pageSize,
+        ?int $limit = null,
+        ?Closure $onPage = null,
+    ): PagedFetchResult {
+        return $this->paginate(
+            fn (array $pageQuery): array => $this->client->getStandard($entitySet, $pageQuery),
+            $query,
+            $onRow,
+            $pageSize,
+            $limit,
+            $onPage,
+        );
+    }
+
+    /**
+     * @param  Closure(array<string, scalar> $query): array<array-key, mixed>  $request  Performs one page's request.
+     * @param  Closure(int $pageSize, int $skip): array<string, scalar>  $query
+     * @param  Closure(array<string, mixed> $row): void  $onRow
+     */
+    private function paginate(
+        Closure $request,
+        Closure $query,
+        Closure $onRow,
+        int $pageSize,
+        ?int $limit,
+        ?Closure $onPage,
+    ): PagedFetchResult {
         $rows = 0;
         $pages = 0;
         $latest = null;
@@ -63,13 +113,7 @@ class BusinessCentralPager
                 break;
             }
 
-            $response = $this->client->getCustom(
-                $publisher,
-                $group,
-                $version,
-                $entitySet,
-                $query($ask, $rows),
-            );
+            $response = $request($query($ask, $rows));
 
             $page = $response['value'] ?? [];
 

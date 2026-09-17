@@ -21,6 +21,18 @@ final readonly class WebsiteRequest
 
     public const MODE_PARTIAL = 'partial';
 
+    public const ENTITY_PRODUCT = 'product';
+
+    public const ENTITY_CAMPAIGN = 'campaign';
+
+    public const ENTITY_CUSTOMER = 'customer';
+
+    public const ENTITY_CONTACT = 'contact';
+
+    public const ENTITY_SALES_ORDER = 'sales_order';
+
+    public const ENTITY_SALES_INVOICE = 'sales_invoice';
+
     /**
      * @param  array<string, mixed>  $body
      */
@@ -36,7 +48,7 @@ final readonly class WebsiteRequest
      * A plan with nothing to send has no request: asking for one is a caller
      * mistake rather than an empty delivery.
      */
-    public static function fromPlan(DeliveryPlan $plan): self
+    public static function fromPlan(DeliveryPlan $plan, string $entity = self::ENTITY_PRODUCT): self
     {
         $bcId = (string) ($plan->fullPayload['bc_id'] ?? '');
 
@@ -44,19 +56,25 @@ final readonly class WebsiteRequest
             throw new InvalidArgumentException('Delivery payload is missing a bc_id.');
         }
 
+        // The entity leads the body so the receiver can route on it before
+        // reading anything else. Without it every delivery looks like a
+        // product, and a campaign would be applied by the product applier.
         return match ($plan->type) {
             DeliveryType::Remove => new self($plan->action, $bcId, [
+                'entity' => $entity,
                 'action' => WebsiteAction::Remove->value,
                 'bc_id' => $bcId,
                 'reasons' => $plan->fullPayload['reasons'] ?? [],
             ]),
             DeliveryType::Full => new self($plan->action, $bcId, [
+                'entity' => $entity,
                 'action' => WebsiteAction::Upsert->value,
                 'mode' => self::MODE_FULL,
                 'bc_id' => $bcId,
                 'payload' => $plan->fullPayload,
             ]),
             DeliveryType::Partial => new self($plan->action, $bcId, [
+                'entity' => $entity,
                 'action' => WebsiteAction::Upsert->value,
                 'mode' => self::MODE_PARTIAL,
                 'bc_id' => $bcId,
@@ -66,6 +84,14 @@ final readonly class WebsiteRequest
                 'A plan with nothing to send cannot be turned into a request.',
             ),
         };
+    }
+
+    /**
+     * Which kind of record this delivery carries.
+     */
+    public function entity(): string
+    {
+        return (string) ($this->body['entity'] ?? self::ENTITY_PRODUCT);
     }
 
     public function isRemoval(): bool

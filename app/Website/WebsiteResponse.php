@@ -145,7 +145,7 @@ final readonly class WebsiteResponse
 
             $parts[] = $wpId === null
                 ? sprintf('%s "%s" is already in use', $field, $value)
-                : sprintf('%s "%s" belongs to WordPress product #%d', $field, $value, (int) $wpId);
+                : sprintf('%s "%s" belongs to WordPress record #%d', $field, $value, (int) $wpId);
         }
 
         return $parts === [] ? 'Identity conflict' : implode('; ', $parts);

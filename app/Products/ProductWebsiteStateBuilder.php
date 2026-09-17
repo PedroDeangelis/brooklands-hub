@@ -68,6 +68,7 @@ class ProductWebsiteStateBuilder
         $location = $this->location($payload, $inventoryType);
 
         $eligibility = $this->eligibility->for($product);
+        $copy = $this->marketingCopy($product);
         $stock = $this->stock($product, $location);
         $salesBlocked = (bool) $product->sales_blocked;
         $tracksInventory = $inventoryType === self::TYPE_INVENTORY;
@@ -80,6 +81,8 @@ class ProductWebsiteStateBuilder
             inventoryType: $inventoryType,
             salesBlocked: $salesBlocked,
             barcode: $this->barcode($product),
+            description: $copy['description'],
+            shortDescription: $copy['short_description'],
             location: $location,
             brand: $dimensions[self::DIMENSION_BRAND] ?? null,
             department: $dimensions[self::DIMENSION_DEPARTMENT] ?? null,
@@ -92,6 +95,31 @@ class ProductWebsiteStateBuilder
             stock: $stock,
             decision: $this->decisions->decide($eligibility, $tracksInventory, $salesBlocked, $stock),
         );
+    }
+
+    /**
+     * The marketing copy for a product, empty when none has been written.
+     *
+     * Copy arrives from a separate Business Central entity, so it may
+     * legitimately be missing: a product can be imported before its copy, and
+     * most items never have any written at all. Missing copy and cleared copy
+     * both read as '', because the website should hold no description in either
+     * case.
+     *
+     * Already sanitised by the importer; nothing is cleaned or derived here.
+     *
+     * @return array{description: string, short_description: string}
+     */
+    private function marketingCopy(Product $product): array
+    {
+        $copy = $product->relationLoaded('marketingText')
+            ? $product->getRelation('marketingText')
+            : $product->marketingText()->first();
+
+        return [
+            'description' => (string) ($copy?->marketing_text ?? ''),
+            'short_description' => (string) ($copy?->short_description ?? ''),
+        ];
     }
 
     /**

@@ -47,6 +47,71 @@
                         </x-slot:icon>
                         Products
                     </x-nav-link>
+
+                    <x-nav-link :href="route('promotions.index')" :current="request()->routeIs('promotions.*')">
+                        <x-slot:icon>
+                            <path d="M3 11.5 12.5 3a1.5 1.5 0 0 1 1.1-.4l5.3.3a1.5 1.5 0 0 1 1.4 1.4l.3 5.3a1.5 1.5 0 0 1-.4 1.1L11.5 20a1.5 1.5 0 0 1-2.1 0l-6.4-6.4a1.5 1.5 0 0 1 0-2.1Z"></path>
+                            <path d="M16.5 7.5h.01"></path>
+                        </x-slot:icon>
+                        Promotions
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('customers.index')" :current="request()->routeIs('customers.*')">
+                        <x-slot:icon>
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.9"></path><path d="M16 3.1a4 4 0 0 1 0 7.8"></path>
+                        </x-slot:icon>
+                        Customers
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('contacts.index')" :current="request()->routeIs('contacts.*')">
+                        <x-slot:icon>
+                            <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
+                            <path d="M16 3.5a4 4 0 0 1 0 9"></path>
+                        </x-slot:icon>
+                        Contacts
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('sales-orders.index')" :current="request()->routeIs('sales-orders.*')">
+                        <x-slot:icon>
+                            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
+                            <path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path>
+                        </x-slot:icon>
+                        Sales orders
+                    </x-nav-link>
+
+                    @php
+                        // Invoices and credit memos share one route and one list; the
+                        // kind filter (or, on a detail page, the document itself) says
+                        // which of the two sidebar entries is the current one.
+                        $creditMemosActive = (request()->routeIs('sales-invoices.index')
+                                && request()->query(\App\SalesInvoices\SalesInvoiceFilter::PARAM_KIND) === \App\SalesInvoices\SalesInvoiceKind::CreditMemo->value)
+                            || (request()->routeIs('sales-invoices.show')
+                                && (bool) request()->route('salesInvoice')?->isCreditMemo());
+                    @endphp
+
+                    <x-nav-link :href="route('sales-invoices.index')" :current="request()->routeIs('sales-invoices.*') && ! $creditMemosActive">
+                        <x-slot:icon>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path>
+                            <path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h8"></path>
+                        </x-slot:icon>
+                        Sales invoices
+                    </x-nav-link>
+
+                    <x-nav-link :href="route('sales-invoices.index', [\App\SalesInvoices\SalesInvoiceFilter::PARAM_KIND => \App\SalesInvoices\SalesInvoiceKind::CreditMemo->value])"
+                                :current="$creditMemosActive">
+                        <x-slot:icon>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"></path>
+                            <path d="M14 2v6h6"></path><path d="M8 15h8"></path>
+                        </x-slot:icon>
+                        Sales credit memos
+                    </x-nav-link>
+                    <x-nav-link :href="route('document-attachments.index')" :current="request()->routeIs('document-attachments.*')">
+                        <x-slot:icon>
+                            <path d="M21.4 11.1 12.3 20a5.5 5.5 0 0 1-7.8-7.8l9.1-9.1a3.7 3.7 0 0 1 5.2 5.2l-9.1 9.1a1.8 1.8 0 0 1-2.6-2.6l8.4-8.4"></path>
+                        </x-slot:icon>
+                        Attachments
+                    </x-nav-link>
                 </div>
 
                 <div class="flex flex-col gap-3.5 px-4">

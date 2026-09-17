@@ -14,10 +14,12 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Tracks whether one Business Central record still needs delivering to a channel.
  *
- * Unique on (channel, bc_id): one row per record per destination.
+ * Unique on (channel, entity, bc_id): one row per record per destination. The
+ * channel is where a record is going; the entity is what kind of record it is.
  */
 #[Fillable([
     'channel',
+    'entity',
     'bc_id',
     'status',
     'action',

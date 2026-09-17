@@ -65,6 +65,20 @@ class Product extends Model
     }
 
     /**
+     * The latest Business Central marketing copy for this item.
+     *
+     * Joined on the Business Central id rather than the local key, and may be
+     * absent: the copy is imported by its own flow and can lag behind, and many
+     * items have no copy written for them at all.
+     *
+     * @return HasOne<ProductMarketingText, $this>
+     */
+    public function marketingText(): HasOne
+    {
+        return $this->hasOne(ProductMarketingText::class, 'bc_id', 'bc_id');
+    }
+
+    /**
      * The ledger row for the product delivery channel, if one exists.
      *
      * @return HasOne<SyncRecord, $this>

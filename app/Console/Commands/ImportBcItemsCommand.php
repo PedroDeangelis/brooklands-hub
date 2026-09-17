@@ -28,11 +28,17 @@ use Illuminate\Support\Facades\Log;
  * Normalisation and persistence deliberately stay in the job, so the same path
  * runs whether a row arrives from here or from anywhere else. This command only
  * fetches and queues; Horizon may still be working long after it exits.
+ *
+ * --force additionally re-delivers every fetched item, whether or not anything
+ * moved. That is for putting a drifted website back in step, and it queues one
+ * delivery per product, so it asks before doing it. The scheduler never passes
+ * it.
  */
 #[Signature('bc:import-items
     {--page-size=200 : How many items to request per Business Central call}
     {--top= : Stop after this many items in total (manual testing; never advances the checkpoint)}
     {--full : Re-import the complete catalogue, ignoring the incremental checkpoint}
+    {--force : Re-deliver every fetched item even when nothing changed (requires --full)}
     {--sku= : Fetch one item by its Business Central number (manual testing; never advances the checkpoint)}
     {--skip=0 : How many items to skip before fetching}')]
 #[Description('Fetch items from Business Central and queue an import job for each one')]
@@ -44,6 +50,7 @@ class ImportBcItemsCommand extends Command
         $limit = $this->option('top') === null ? null : (int) $this->option('top');
         $skip = (int) $this->option('skip');
         $full = (bool) $this->option('full');
+        $force = (bool) $this->option('force');
 
         if ($pageSize < 1) {
             $this->error('--page-size must be a positive integer.');
@@ -65,8 +72,18 @@ class ImportBcItemsCommand extends Command
 
         $sku = trim((string) $this->option('sku'));
 
+        if ($force && ! $this->forceIsAllowed($full, $limit, $sku)) {
+            return self::FAILURE;
+        }
+
         if ($sku !== '') {
             return $this->importOneSku($client, $sku);
+        }
+
+        if ($force && ! $this->confirmForce()) {
+            $this->line('Nothing was fetched or queued.');
+
+            return self::SUCCESS;
         }
 
         $checkpoint = SyncCheckpoint::forEntity(SyncCheckpoint::ENTITY_ITEMS);
@@ -88,8 +105,8 @@ class ImportBcItemsCommand extends Command
                 ItemsQuery::VERSION,
                 ItemsQuery::ENTITY_SET,
                 fn (int $ask, int $fetched): array => ItemsQuery::page($ask, $skip + $fetched, $since),
-                function (array $row) use (&$dispatched): void {
-                    ImportBcProduct::dispatch($row);
+                function (array $row) use (&$dispatched, $force): void {
+                    ImportBcProduct::dispatch($row, $force);
                     $dispatched++;
                 },
                 $pageSize,
@@ -274,6 +291,57 @@ class ImportBcItemsCommand extends Command
         }
 
         $checkpoint->fill($attributes)->save();
+    }
+
+    /**
+     * Whether --force makes sense alongside the other options given.
+     *
+     * A forced run re-delivers what it fetches, so it only means anything when
+     * it fetches everything. --top and --sku both read a subset and never
+     * advance the checkpoint, so forcing them would re-send an arbitrary slice
+     * and call it a resync.
+     */
+    private function forceIsAllowed(bool $full, ?int $limit, string $sku): bool
+    {
+        if (! $full) {
+            $this->error('--force requires --full: a forced run re-delivers the complete catalogue.');
+
+            return false;
+        }
+
+        if ($limit !== null) {
+            $this->error('--force cannot be combined with --top.');
+
+            return false;
+        }
+
+        if ($sku !== '') {
+            $this->error('--force cannot be combined with --sku.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check the operator meant it.
+     *
+     * Gated on whether there is anyone to ask. Under --no-interaction the
+     * input is non-interactive and the run proceeds: a scheduled or scripted
+     * caller has already stated its intent on the command line, and prompting
+     * into a void would abort it.
+     */
+    private function confirmForce(): bool
+    {
+        $this->warn('Forcing re-delivery of the complete catalogue.');
+        $this->line('Every fetched item will be queued for WordPress even if nothing changed.');
+
+        if (! $this->input->isInteractive()) {
+            return true;
+        }
+
+        return $this->confirm('Continue?', false);
     }
 
     /**

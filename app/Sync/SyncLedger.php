@@ -6,7 +6,6 @@ use App\Enums\SyncStatus;
 use App\Models\Product;
 use App\Models\SyncRecord;
 use App\Products\WebsiteEligibility;
-use App\Support\Canonical;
 use App\Sync\Payload\DeliveryPlan;
 use App\Sync\Payload\ProductWebsitePayloadBuilder;
 
@@ -24,10 +23,22 @@ use App\Sync\Payload\ProductWebsitePayloadBuilder;
  */
 class SyncLedger
 {
+    use TracksDeliveryState;
+
     /**
      * The product delivery channel. Other channels arrive with their own entities.
      */
     public const CHANNEL_ITEMS = 'items';
+
+    /**
+     * Which kind of Business Central record this ledger tracks.
+     *
+     * Identity is (channel, entity, bc_id): the channel is where a record is
+     * going, the entity is what it is. Written explicitly rather than left to
+     * the column default, so a row says what it is without the schema having to
+     * be consulted.
+     */
+    public const ENTITY_PRODUCT = 'product';
 
     public function __construct(
         private readonly WebsiteEligibility $eligibility,
@@ -43,6 +54,7 @@ class SyncLedger
     {
         $record = SyncRecord::firstOrNew([
             'channel' => $channel,
+            'entity' => self::ENTITY_PRODUCT,
             'bc_id' => $product->bc_id,
         ]);
 
@@ -82,15 +94,24 @@ class SyncLedger
      * though its Business Central fields are untouched, while a product that
      * has genuinely not moved is left alone however often it is re-imported.
      *
+     * $force re-opens the row regardless, for a deliberate resync after the
+     * website has drifted from what the ledger believes it holds — a restored
+     * database, a hand-deleted post, a receiver that stopped applying. It is
+     * never set by the scheduled path.
+     *
      * @param  array<int, string>  $changedFields
      */
-    public function reconcile(Product $product, array $changedFields = [], string $channel = self::CHANNEL_ITEMS): ?SyncRecord
-    {
+    public function reconcile(
+        Product $product,
+        array $changedFields = [],
+        string $channel = self::CHANNEL_ITEMS,
+        bool $force = false,
+    ): ?SyncRecord {
         $record = $this->find($product, $channel);
         $action = $this->desiredAction($product);
         $hash = $this->hash($this->payloads->build($product));
 
-        if ($record !== null && $record->action === $action && $record->payload_hash === $hash) {
+        if (! $force && $record !== null && $record->action === $action && $record->payload_hash === $hash) {
             // The ledger already wants exactly this. Whether it has been
             // delivered yet is the queue's business, not ours: re-opening the
             // row here would reset a failure count or overwrite an in-flight
@@ -124,164 +145,13 @@ class SyncLedger
     }
 
     /**
-     * Claim a record for delivery.
-     *
-     * Recorded so an in-flight delivery is visible, and so a re-import can tell
-     * "a job already holds this" from "nothing has started".
-     */
-    public function markSyncing(SyncRecord $record): SyncRecord
-    {
-        $record->fill([
-            'status' => SyncStatus::Syncing,
-            'started_at' => now(),
-            'attempts' => $record->attempts + 1,
-        ]);
-
-        $record->save();
-
-        return $record;
-    }
-
-    /**
-     * Mark a record as delivered, recording what the website now holds.
-     *
-     * The full desired payload is stored even when only a partial diff went
-     * over the wire: the website now holds the whole state, and the next diff
-     * must be computed against all of it rather than against the fragment sent.
-     *
-     * $deliveredHash is the hash of the state that was actually sent. If the
-     * product moved on while the request was in flight, that no longer matches
-     * the record and marking it synced would claim the website holds something
-     * it was never given. The newer state is left pending instead, and false is
-     * returned so the caller can say so.
-     */
-    public function markSynced(SyncRecord $record, ?string $deliveredHash = null): bool
-    {
-        $record->refresh();
-
-        $deliveredHash ??= $record->payload_hash;
-
-        if ($record->payload_hash !== $deliveredHash) {
-            // A newer desired state exists. Record nothing about delivery: what
-            // reached the website is already stale, and another delivery is owed.
-            $record->fill([
-                'status' => SyncStatus::Pending,
-                'started_at' => null,
-            ]);
-
-            $record->save();
-
-            return false;
-        }
-
-        $record->fill([
-            'status' => SyncStatus::Synced,
-            'delivered_action' => $record->action,
-            'delivered_hash' => $record->payload_hash,
-            'delivered_payload' => $record->payload,
-            'synced_at' => now(),
-            'last_error' => null,
-        ]);
-
-        $record->save();
-
-        return true;
-    }
-
-    /**
-     * Forget what the website was believed to hold, so the next delivery is full.
-     *
-     * The website has told us it has no record of this product, which means the
-     * delivered payload we were diffing against describes something that does
-     * not exist. Clearing it makes the next plan a full payload rather than a
-     * partial the website could not apply.
-     *
-     * Deliberately not a failure: nothing went wrong, and the record goes back
-     * to pending so the corrected delivery happens on its own.
-     */
-    public function forgetDelivered(SyncRecord $record): SyncRecord
-    {
-        $record->fill([
-            'status' => SyncStatus::Pending,
-            'started_at' => null,
-            'delivered_action' => null,
-            'delivered_hash' => null,
-            'delivered_payload' => null,
-            'synced_at' => null,
-        ]);
-
-        $record->save();
-
-        return $record;
-    }
-
-    /**
-     * Record that the website could not take this product as addressed.
-     *
-     * Nothing is recorded as delivered and the desired state is left intact: the
-     * product is still wanted, and the payload is still the one to send once the
-     * collision is resolved. Deliberately not a failure, and never retried
-     * automatically — the same payload would collide the same way.
-     *
-     * @param  array<int, array<string, mixed>>  $conflicts
-     */
-    public function markConflicted(SyncRecord $record, array $conflicts, string $summary): SyncRecord
-    {
-        $record->fill([
-            'status' => SyncStatus::Conflict,
-            'started_at' => null,
-            'conflict_details' => array_values($conflicts),
-            'conflicted_at' => now(),
-            'last_error' => $summary,
-        ]);
-
-        $record->save();
-
-        return $record;
-    }
-
-    /**
-     * Record a failed delivery, leaving the desired state untouched.
-     */
-    public function markFailed(SyncRecord $record, string $error): SyncRecord
-    {
-        $record->fill([
-            'status' => SyncStatus::Failed,
-            'started_at' => null,
-            'last_error' => $error,
-            'failed_at' => now(),
-        ]);
-
-        $record->save();
-
-        return $record;
-    }
-
-    /**
-     * Hand a record back for another attempt without recording a failure.
-     *
-     * Used when a delivery could not proceed rather than did not succeed: the
-     * state moved underneath it, or a lock was already held.
-     */
-    public function releaseToPending(SyncRecord $record): SyncRecord
-    {
-        $record->fill([
-            'status' => SyncStatus::Pending,
-            'started_at' => null,
-        ]);
-
-        $record->save();
-
-        return $record;
-    }
-
-    /**
      * The ledger row for a product, if one exists.
      */
     public function find(Product $product, string $channel = self::CHANNEL_ITEMS): ?SyncRecord
     {
         return SyncRecord::query()
             ->forChannel($channel)
+            ->where('entity', self::ENTITY_PRODUCT)
             ->where('bc_id', $product->bc_id)
             ->first();
     }
@@ -320,19 +190,6 @@ class SyncLedger
     public function payloadFor(Product $product): array
     {
         return $this->payloads->build($product);
-    }
-
-    /**
-     * Hash of a website payload.
-     *
-     * Canonical encoding means equivalent payloads always hash identically,
-     * regardless of key ordering.
-     *
-     * @param  array<string, mixed>  $payload
-     */
-    public function hash(array $payload): string
-    {
-        return hash('sha256', Canonical::encode($payload));
     }
 
     /**

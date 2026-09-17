@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sync\Payload;
 
 use App\Models\Product;
+use App\Models\ProductMarketingText;
 use App\Models\ProductQuantity;
 use App\Sync\Payload\DeliveryType;
 use App\Sync\Payload\ProductWebsitePayloadBuilder;
@@ -92,10 +93,10 @@ class ProductWebsitePayloadTest extends TestCase
         $payload = $this->builder()->build($this->product());
 
         $this->assertSame([
-            'bc_id', 'sku', 'name', 'name_2', 'price', 'rrp', 'purchasable',
-            'manage_stock', 'website_quantity', 'stock_status', 'inventory_type',
-            'barcode', 'location', 'brand', 'categories', 'shipping_class',
-            'attributes', 'group_prices',
+            'bc_id', 'sku', 'name', 'name_2', 'description', 'short_description',
+            'price', 'rrp', 'purchasable', 'manage_stock', 'website_quantity',
+            'stock_status', 'inventory_type', 'barcode', 'location', 'brand',
+            'categories', 'shipping_class', 'attributes', 'group_prices', 'attachments',
         ], array_keys($payload));
     }
 
@@ -406,6 +407,97 @@ class ProductWebsitePayloadTest extends TestCase
 
         $this->assertSame($record->payload, $record->delivered_payload);
         $this->assertSame($record->payload_hash, $record->delivered_hash);
+    }
+
+    // ------------------------------------------------------- marketing copy
+
+    /**
+     * Copy is stored sanitised, so the payload carries it as it stands. This is
+     * what puts a description on the website at all.
+     */
+    public function test_the_payload_carries_the_marketing_copy(): void
+    {
+        $product = $this->product();
+
+        ProductMarketingText::factory()->create([
+            'bc_id' => $product->bc_id,
+            'sku' => $product->sku,
+            'marketing_text' => 'A sturdy poly bin. Holds twenty litres.',
+            'short_description' => 'A sturdy poly bin.',
+        ]);
+
+        $payload = $this->builder()->build($product->fresh());
+
+        $this->assertSame('A sturdy poly bin. Holds twenty litres.', $payload['description']);
+        $this->assertSame('A sturdy poly bin.', $payload['short_description']);
+    }
+
+    /**
+     * Most items have no copy written for them. The fields are still sent, as
+     * empty strings, so the website is told to hold nothing rather than left
+     * with whatever it had.
+     */
+    public function test_a_product_with_no_copy_sends_empty_strings(): void
+    {
+        $payload = $this->builder()->build($this->product());
+
+        $this->assertSame('', $payload['description']);
+        $this->assertSame('', $payload['short_description']);
+    }
+
+    /**
+     * An edit in Business Central has to reach the website, and only the two
+     * copy fields should move with it.
+     */
+    public function test_editing_the_copy_produces_a_partial_delivery(): void
+    {
+        $product = $this->product();
+
+        $copy = ProductMarketingText::factory()->create([
+            'bc_id' => $product->bc_id,
+            'sku' => $product->sku,
+            'marketing_text' => 'First copy. Second sentence.',
+            'short_description' => 'First copy.',
+        ]);
+
+        $this->deliver($product->fresh());
+
+        $copy->update([
+            'marketing_text' => 'Rewritten copy. Second sentence.',
+            'short_description' => 'Rewritten copy.',
+        ]);
+
+        $plan = $this->ledger()->plan($product->fresh());
+
+        $this->assertSame(['description', 'short_description'], $plan->diff->changedFields);
+        $this->assertSame('Rewritten copy. Second sentence.', $plan->diff->changes['description']);
+        $this->assertSame('Rewritten copy.', $plan->diff->changes['short_description']);
+    }
+
+    /**
+     * Clearing the copy in Business Central must clear it on the website, so
+     * the empty value is sent rather than the field being dropped.
+     */
+    public function test_clearing_the_copy_sends_empty_strings(): void
+    {
+        $product = $this->product();
+
+        $copy = ProductMarketingText::factory()->create([
+            'bc_id' => $product->bc_id,
+            'sku' => $product->sku,
+            'marketing_text' => 'Copy that is about to go. And more.',
+            'short_description' => 'Copy that is about to go.',
+        ]);
+
+        $this->deliver($product->fresh());
+
+        $copy->update(['marketing_text' => '', 'short_description' => '']);
+
+        $plan = $this->ledger()->plan($product->fresh());
+
+        $this->assertSame(['description', 'short_description'], $plan->diff->changedFields);
+        $this->assertSame('', $plan->diff->changes['description']);
+        $this->assertSame('', $plan->diff->changes['short_description']);
     }
 
     // --------------------------------------------------------------------- UI

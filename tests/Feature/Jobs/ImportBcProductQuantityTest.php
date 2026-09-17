@@ -3,6 +3,7 @@
 namespace Tests\Feature\Jobs;
 
 use App\BusinessCentral\Import\ProductQuantityImporter;
+use App\Jobs\DeliverProductToWebsite;
 use App\Jobs\ImportBcProductQuantity;
 use App\Models\Product;
 use App\Models\ProductQuantity;
@@ -95,5 +96,45 @@ class ImportBcProductQuantityTest extends TestCase
             app(ProductQuantityImporter::class),
             app(SyncLedger::class),
         );
+    }
+
+    // ------------------------------------------------------------------ force
+
+    /**
+     * Quantities carry a second gate the other imports do not: they only
+     * reconcile when the figures actually moved. A forced run has to pass that
+     * too, or --force would appear to do nothing for stock.
+     */
+    public function test_force_dispatches_a_delivery_when_the_figures_have_not_moved(): void
+    {
+        Queue::fake([DeliverProductToWebsite::class]);
+
+        $importer = app(ProductQuantityImporter::class);
+        $ledger = app(SyncLedger::class);
+
+        (new ImportBcProductQuantity($this->row()))->handle($importer, $ledger);
+        Queue::assertPushed(DeliverProductToWebsite::class, 1);
+
+        // Identical figures: normally this opens nothing at all.
+        (new ImportBcProductQuantity($this->row()))->handle($importer, $ledger);
+        Queue::assertPushed(DeliverProductToWebsite::class, 1);
+
+        (new ImportBcProductQuantity($this->row(), force: true))->handle($importer, $ledger);
+
+        Queue::assertPushed(DeliverProductToWebsite::class, 2);
+    }
+
+    /**
+     * A row with no matching product still has nothing to deliver, forced or
+     * not: the skip above the gate is about identity, not about change.
+     */
+    public function test_force_does_not_deliver_a_row_with_no_matching_product(): void
+    {
+        Queue::fake([DeliverProductToWebsite::class]);
+
+        (new ImportBcProductQuantity($this->row(['id' => 'ffffffff-0000-0000-0000-000000000009']), force: true))
+            ->handle(app(ProductQuantityImporter::class), app(SyncLedger::class));
+
+        Queue::assertNothingPushed();
     }
 }

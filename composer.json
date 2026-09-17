@@ -10,6 +10,7 @@
         "ezyang/htmlpurifier": "^4.19",
         "laravel/framework": "^13.17",
         "laravel/horizon": "^5.49",
+        "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0",
         "predis/predis": "^3.6"
     },

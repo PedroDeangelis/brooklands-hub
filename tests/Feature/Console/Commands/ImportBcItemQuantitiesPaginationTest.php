@@ -422,4 +422,83 @@ class ImportBcItemQuantitiesPaginationTest extends TestCase
 
         $this->assertNull($this->checkpoint()->last_modified_at);
     }
+
+    // ------------------------------------------------------------------ force
+
+    /**
+     * Unlike the item and campaign imports, this one needs no --full: it
+     * already sweeps the whole endpoint on every run, so there is no narrower
+     * fetch for --force to contradict.
+     */
+    public function test_force_does_not_require_full(): void
+    {
+        $this->fakeEndpoint($this->rows(2));
+
+        $this->artisan('bc:import-item-quantities', ['--force' => true])
+            ->expectsOutputToContain('Forcing re-delivery')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(ImportBcProductQuantity::class, 2);
+    }
+
+    public function test_force_cannot_be_combined_with_top(): void
+    {
+        $this->fakeEndpoint($this->rows(3));
+
+        $this->artisan('bc:import-item-quantities', ['--force' => true, '--top' => 1])
+            ->expectsOutputToContain('--force cannot be combined with --top')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_force_cannot_be_combined_with_sku(): void
+    {
+        $this->fakeEndpoint($this->rows(1));
+
+        $this->artisan('bc:import-item-quantities', ['--force' => true, '--sku' => 'AA27'])
+            ->expectsOutputToContain('--force cannot be combined with --sku')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_declining_the_confirmation_fetches_nothing(): void
+    {
+        $this->fakeEndpoint($this->rows(2));
+
+        $this->artisan('bc:import-item-quantities', ['--force' => true])
+            ->expectsConfirmation('Continue?', 'no')
+            ->expectsOutputToContain('Nothing was fetched or queued')
+            ->assertExitCode(0);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_force_passes_the_flag_to_every_job(): void
+    {
+        $this->fakeEndpoint($this->rows(2));
+
+        $this->artisan('bc:import-item-quantities', ['--force' => true])
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(
+            ImportBcProductQuantity::class,
+            fn (ImportBcProductQuantity $job): bool => $job->force === true,
+        );
+    }
+
+    public function test_a_normal_run_does_not_force(): void
+    {
+        $this->fakeEndpoint($this->rows(1));
+
+        $this->artisan('bc:import-item-quantities', ['--page-size' => 200])->assertExitCode(0);
+
+        Queue::assertPushed(
+            ImportBcProductQuantity::class,
+            fn (ImportBcProductQuantity $job): bool => $job->force === false,
+        );
+    }
 }

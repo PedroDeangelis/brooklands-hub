@@ -63,6 +63,7 @@ class DeliverProductToWebsite implements ShouldQueue
     {
         $record = SyncRecord::query()
             ->forChannel($this->channel)
+            ->where('entity', SyncLedger::ENTITY_PRODUCT)
             ->where('bc_id', $this->bcId)
             ->first();
 
@@ -99,7 +100,9 @@ class DeliverProductToWebsite implements ShouldQueue
         $ledger->markSyncing($record);
 
         try {
-            $response = $client->deliver(WebsiteRequest::fromPlan($plan));
+            $response = $client->deliver(
+                WebsiteRequest::fromPlan($plan, WebsiteRequest::ENTITY_PRODUCT),
+            );
         } catch (WebsiteConfigurationException $e) {
             // Misconfiguration is not a transport failure: retrying cannot fix
             // it, and burning the attempts would hide the cause.

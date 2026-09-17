@@ -58,4 +58,11 @@ return [
         'http_connect_timeout' => (int) env('BC_HTTP_CONNECT_TIMEOUT', 10),
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+        'allowed_hd' => env('GOOGLE_ALLOWED_HD', 'legendhasit.co.nz'),
+    ],
+
 ];

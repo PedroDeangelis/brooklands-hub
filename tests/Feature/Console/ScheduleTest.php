@@ -161,6 +161,75 @@ class ScheduleTest extends TestCase
         $this->assertTrue($this->contains($this->events(), 'bc:import-item-quantities --full'));
     }
 
+    public function test_the_marketing_text_import_is_scheduled(): void
+    {
+        $this->assertTrue($this->contains($this->events(), 'bc:import-item-marketing-text'));
+    }
+
+    public function test_a_nightly_marketing_text_reconciliation_is_scheduled(): void
+    {
+        $this->assertTrue($this->contains($this->events(), 'bc:import-item-marketing-text --full'));
+    }
+
+    /**
+     * The marketing text import is incremental, so a total cap would leave the
+     * remainder unfetched and the checkpoint unable to advance.
+     */
+    public function test_the_marketing_text_import_is_not_capped(): void
+    {
+        foreach ($this->commands($this->events()) as $command) {
+            if (str_contains($command, 'bc:import-item-marketing-text')) {
+                $this->assertStringNotContainsString('--top', $command);
+                $this->assertStringContainsString('--page-size=', $command);
+            }
+        }
+    }
+
+    /**
+     * Copy is edited by hand and changes rarely, so there is no enable flag:
+     * a description that silently stops updating is not visibly broken.
+     */
+    public function test_the_marketing_text_import_cannot_be_turned_off(): void
+    {
+        $events = $this->events(['sync.import.items.enabled' => false]);
+
+        $this->assertTrue($this->contains($events, 'bc:import-item-marketing-text'));
+    }
+
+    public function test_the_document_attachment_sweep_is_scheduled(): void
+    {
+        $this->assertTrue($this->contains($this->events(), 'bc:import-document-attachments'));
+    }
+
+    /**
+     * Every run reads the whole endpoint, so there is no incremental-and-full
+     * pair and no cap: a capped run could not replace a parent's set, which is
+     * the only way a file deleted in Business Central ever leaves.
+     */
+    public function test_the_document_attachment_sweep_is_not_capped_and_has_no_full_variant(): void
+    {
+        $sweeps = array_values(array_filter(
+            $this->commands($this->events()),
+            static fn (string $command): bool => str_contains($command, 'bc:import-document-attachments'),
+        ));
+
+        $this->assertCount(1, $sweeps);
+        $this->assertStringNotContainsString('--top', $sweeps[0]);
+        $this->assertStringNotContainsString('--full', $sweeps[0]);
+        $this->assertStringContainsString('--page-size=', $sweeps[0]);
+    }
+
+    /**
+     * No enable flag, for the reason given on campaigns: a file that silently
+     * stops reaching the website is not visibly broken.
+     */
+    public function test_the_document_attachment_sweep_cannot_be_turned_off(): void
+    {
+        $events = $this->events(['sync.import.items.enabled' => false]);
+
+        $this->assertTrue($this->contains($events, 'bc:import-document-attachments'));
+    }
+
     public function test_an_import_can_be_turned_off(): void
     {
         $events = $this->events(['sync.import.items.enabled' => false]);
@@ -203,6 +272,93 @@ class ScheduleTest extends TestCase
     {
         foreach ($this->events() as $event) {
             $this->assertSame(config('sync.schedule.timezone'), $event->timezone);
+        }
+    }
+
+    public function test_the_contact_import_is_scheduled_incrementally_and_nightly(): void
+    {
+        $events = $this->events();
+
+        $this->assertTrue($this->contains($events, 'bc:import-contacts --page-size='));
+        $this->assertTrue($this->contains($events, 'bc:import-contacts --full --page-size='));
+    }
+
+    public function test_the_contact_link_sweep_is_scheduled_and_not_capped(): void
+    {
+        $events = $this->events();
+
+        $this->assertTrue($this->contains($events, 'bc:import-contact-links --page-size='));
+
+        foreach ($this->commands($events) as $command) {
+            if (str_contains($command, 'bc:import-contact-links')) {
+                $this->assertStringNotContainsString('--top', $command);
+            }
+        }
+    }
+
+    public function test_the_sales_order_import_is_scheduled_incrementally_and_nightly(): void
+    {
+        $events = $this->events();
+
+        $this->assertTrue($this->contains($events, 'bc:import-sales-orders --page-size='));
+        $this->assertTrue($this->contains($events, 'bc:import-sales-orders --full --page-size='));
+    }
+
+    /**
+     * Orders wait for their customer, so the order import runs after the
+     * customer import within each five-minute cycle.
+     */
+    public function test_the_sales_order_import_runs_after_the_customer_import(): void
+    {
+        $minuteOf = function (string $needle): int {
+            foreach ($this->events() as $event) {
+                if (str_contains((string) $event->command, $needle) && ! str_contains((string) $event->command, '--full')) {
+                    return (int) explode('-', explode(' ', $event->expression)[0])[0];
+                }
+            }
+
+            $this->fail("no entry for {$needle}");
+        };
+
+        $this->assertGreaterThan($minuteOf('bc:import-customers'), $minuteOf('bc:import-sales-orders'));
+    }
+
+    public function test_the_sales_invoice_import_is_scheduled_incrementally_and_weekly(): void
+    {
+        $events = $this->events();
+
+        $this->assertTrue($this->contains($events, 'bc:import-sales-invoices --page-size='));
+
+        $full = array_filter(
+            $events,
+            fn (Event $event): bool => str_contains((string) $event->command, 'bc:import-sales-invoices --full'),
+        );
+
+        // Weekly: a posted invoice never changes, so a nightly re-read of
+        // every one of them would cost one line request each for nothing.
+        $this->assertCount(1, $full);
+        $this->assertSame('10 4 * * 0', reset($full)->expression);
+    }
+
+    public function test_the_credit_memo_import_is_scheduled_incrementally_and_weekly(): void
+    {
+        $events = $this->events();
+
+        $this->assertTrue($this->contains($events, 'bc:import-sales-credit-memos --page-size='));
+
+        $full = array_filter(
+            $events,
+            fn (Event $event): bool => str_contains((string) $event->command, 'bc:import-sales-credit-memos --full'),
+        );
+
+        $this->assertCount(1, $full);
+        $this->assertSame('25 4 * * 0', reset($full)->expression);
+    }
+
+    public function test_no_scheduled_entry_forces_a_redelivery(): void
+    {
+        foreach ($this->commands($this->events()) as $command) {
+            $this->assertStringNotContainsString('--force', $command);
         }
     }
 

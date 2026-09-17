@@ -28,8 +28,12 @@ class ImportBcProduct implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $row  A raw itemsExt row from Business Central.
+     * @param  bool  $force  Deliver even when nothing has changed, for a deliberate resync.
      */
-    public function __construct(public readonly array $row) {}
+    public function __construct(
+        public readonly array $row,
+        public readonly bool $force = false,
+    ) {}
 
     public function handle(ProductImporter $importer, SyncLedger $ledger): void
     {
@@ -39,7 +43,7 @@ class ImportBcProduct implements ShouldQueue
         // The ledger decides whether this amounts to new work. It compares both
         // halves of the intent, so a product that has only lost its eligibility
         // is queued for removal even though no Business Central field moved.
-        $record = $ledger->reconcile($product, $result->changedFields);
+        $record = $ledger->reconcile($product, $result->changedFields, force: $this->force);
 
         // Only genuinely new work is delivered. reconcile() returns null when the
         // ledger already wants exactly this, which is what stops an unchanged
@@ -54,6 +58,7 @@ class ImportBcProduct implements ShouldQueue
             'product_id' => $product->id,
             'created' => $result->created,
             'changed_fields' => $result->changedFields,
+            'forced' => $this->force,
             'marked_pending' => $record !== null,
             'website_action' => $record?->action->value,
         ]);

@@ -844,4 +844,92 @@ class ImportBcItemsPaginationTest extends TestCase
         $this->assertSame(3, $checkpoint->last_run_pages);
         $this->assertNotNull($checkpoint->last_run_at);
     }
+
+    // ------------------------------------------------------------------ force
+
+    public function test_force_requires_full(): void
+    {
+        $this->fakeCatalogue($this->rows(1));
+
+        $this->artisan('bc:import-items', ['--force' => true])
+            ->expectsOutputToContain('--force requires --full')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_force_cannot_be_combined_with_top(): void
+    {
+        $this->fakeCatalogue($this->rows(3));
+
+        $this->artisan('bc:import-items', ['--full' => true, '--force' => true, '--top' => 1])
+            ->expectsOutputToContain('--force cannot be combined with --top')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_force_cannot_be_combined_with_sku(): void
+    {
+        $this->fakeCatalogue($this->rows(1));
+
+        $this->artisan('bc:import-items', ['--full' => true, '--force' => true, '--sku' => 'SKU0001'])
+            ->expectsOutputToContain('--force cannot be combined with --sku')
+            ->assertExitCode(1);
+
+        Queue::assertNothingPushed();
+    }
+
+    /**
+     * A forced run re-sends the whole catalogue, so it says so and waits.
+     */
+    public function test_force_warns_and_asks_before_running(): void
+    {
+        $this->fakeCatalogue($this->rows(2));
+
+        $this->artisan('bc:import-items', ['--full' => true, '--force' => true])
+            ->expectsOutputToContain('Forcing re-delivery')
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(ImportBcProduct::class, 2);
+    }
+
+    public function test_declining_the_confirmation_fetches_nothing(): void
+    {
+        $this->fakeCatalogue($this->rows(2));
+
+        $this->artisan('bc:import-items', ['--full' => true, '--force' => true])
+            ->expectsConfirmation('Continue?', 'no')
+            ->expectsOutputToContain('Nothing was fetched or queued')
+            ->assertExitCode(0);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_force_passes_the_flag_to_every_job(): void
+    {
+        $this->fakeCatalogue($this->rows(2));
+
+        $this->artisan('bc:import-items', ['--full' => true, '--force' => true])
+            ->expectsConfirmation('Continue?', 'yes')
+            ->assertExitCode(0);
+
+        Queue::assertPushed(
+            ImportBcProduct::class,
+            fn (ImportBcProduct $job): bool => $job->force === true,
+        );
+    }
+
+    public function test_a_normal_run_does_not_force(): void
+    {
+        $this->fakeCatalogue($this->rows(1));
+
+        $this->artisan('bc:import-items', ['--page-size' => 200])->assertExitCode(0);
+
+        Queue::assertPushed(
+            ImportBcProduct::class,
+            fn (ImportBcProduct $job): bool => $job->force === false,
+        );
+    }
 }

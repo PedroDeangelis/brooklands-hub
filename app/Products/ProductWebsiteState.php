@@ -26,6 +26,11 @@ use App\Products\Website\WebsiteDecision;
 final readonly class ProductWebsiteState
 {
     /**
+     * $description and $shortDescription are already sanitised: cleaning happens
+     * once at the import boundary, so these are safe to deliver as they stand.
+     * Both are '' rather than null when no copy exists, because the website must
+     * be told to clear a description that has been removed.
+     *
      * @param  list<PricingRule>  $pricingRules
      * @param  list<ProductAttribute>  $attributes
      */
@@ -37,6 +42,8 @@ final readonly class ProductWebsiteState
         public string $inventoryType,
         public bool $salesBlocked,
         public ?string $barcode,
+        public string $description,
+        public string $shortDescription,
         public ProductLocation $location,
         public ?TaxonomyTerm $brand,
         public ?TaxonomyTerm $department,
@@ -49,6 +56,17 @@ final readonly class ProductWebsiteState
         public StockPosition $stock,
         public WebsiteDecision $decision,
     ) {}
+
+    /**
+     * Whether any marketing copy has been written for this product.
+     *
+     * Absence is normal rather than exceptional: copy is authored by hand in
+     * Business Central and most items have none.
+     */
+    public function hasDescription(): bool
+    {
+        return $this->description !== '';
+    }
 
     public function isEligible(): bool
     {

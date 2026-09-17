@@ -18,6 +18,7 @@
         </include>
     </source>
     <php>
+        <ini name="memory_limit" value="512M"/>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
@@ -32,6 +33,9 @@
              never sent to whatever the developer's .env happens to point at. -->
         <env name="WEBSITE_SYNC_URL" value=""/>
         <env name="WEBSITE_SYNC_SECRET" value="testing-secret"/>
+        <!-- The secret the signed Business Central media routes are verified
+             against, so a test can mint a URL the middleware accepts. -->
+        <env name="BC_ROUTE_SECRET" value="testing-bc-route-secret"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

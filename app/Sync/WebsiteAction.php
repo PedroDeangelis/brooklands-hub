@@ -33,8 +33,8 @@ enum WebsiteAction: string
     public function explain(): string
     {
         return match ($this) {
-            self::Upsert => 'The website should hold this product with its current values.',
-            self::Remove => 'The website should not list this product; it is removed if present.',
+            self::Upsert => 'The website should hold this record with its current values.',
+            self::Remove => 'The website should not list this record; it is removed if present.',
         };
     }
 }

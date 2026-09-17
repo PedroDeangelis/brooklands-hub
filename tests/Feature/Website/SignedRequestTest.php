@@ -107,7 +107,7 @@ class SignedRequestTest extends TestCase
 
         $this->assertTrue($this->verifies($request));
         $this->assertSame(
-            '{"action":"upsert","mode":"full","bc_id":"ab3349b2","payload":{"bc_id":"ab3349b2","sku":"POLY1","price":10}}',
+            '{"entity":"product","action":"upsert","mode":"full","bc_id":"ab3349b2","payload":{"bc_id":"ab3349b2","sku":"POLY1","price":10}}',
             $request->body(),
         );
     }

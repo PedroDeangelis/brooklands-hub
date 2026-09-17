@@ -79,6 +79,125 @@ class SyncSchedule
             );
         }
 
+        // Marketing copy. Unconditional, like campaigns: a description that
+        // silently stops updating looks like a working site showing the wrong
+        // copy. Incremental, so no --top; a cap would leave the remainder
+        // unfetched and the checkpoint unable to advance.
+        $marketingTextPageSize = (int) config('sync.import.marketing_text.page_size');
+
+        $entry(
+            sprintf('bc:import-item-marketing-text --page-size=%d', $marketingTextPageSize),
+            (string) config('sync.import.marketing_text.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-item-marketing-text --full --page-size=%d', $marketingTextPageSize),
+            (string) config('sync.import.marketing_text.full_cron'),
+        );
+
+        // Campaigns are registered unconditionally. There is no enable flag to
+        // read, because a promotion that silently stops updating looks like a
+        // working site showing the wrong prices.
+        $campaignPageSize = (int) config('sync.import.campaigns.page_size');
+
+        $entry(
+            sprintf('bc:import-campaigns --page-size=%d', $campaignPageSize),
+            (string) config('sync.import.campaigns.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-campaigns --full --page-size=%d', $campaignPageSize),
+            (string) config('sync.import.campaigns.full_cron'),
+        );
+
+        // Customers, and the ship-to sweep that attaches addresses to them.
+        // Unconditional, like campaigns.
+        $customerPageSize = (int) config('sync.import.customers.page_size');
+
+        $entry(
+            sprintf('bc:import-customers --page-size=%d', $customerPageSize),
+            (string) config('sync.import.customers.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-customers --full --page-size=%d', $customerPageSize),
+            (string) config('sync.import.customers.full_cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-ship-to-addresses --page-size=%d', (int) config('sync.import.ship_to_addresses.page_size')),
+            (string) config('sync.import.ship_to_addresses.cron'),
+        );
+
+        // Contacts, and the link sweep that attaches customers to them and
+        // re-evaluates their website rules. Unconditional, like customers.
+        $contactPageSize = (int) config('sync.import.contacts.page_size');
+
+        $entry(
+            sprintf('bc:import-contacts --page-size=%d', $contactPageSize),
+            (string) config('sync.import.contacts.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-contacts --full --page-size=%d', $contactPageSize),
+            (string) config('sync.import.contacts.full_cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-contact-links --page-size=%d', (int) config('sync.import.contact_links.page_size')),
+            (string) config('sync.import.contact_links.cron'),
+        );
+
+        // Open sales orders. Unconditional, like customers. Runs a tick after
+        // customers because an order's delivery waits for its customer.
+        $salesOrderPageSize = (int) config('sync.import.sales_orders.page_size');
+
+        $entry(
+            sprintf('bc:import-sales-orders --page-size=%d', $salesOrderPageSize),
+            (string) config('sync.import.sales_orders.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-sales-orders --full --page-size=%d', $salesOrderPageSize),
+            (string) config('sync.import.sales_orders.full_cron'),
+        );
+
+        // Posted sales invoices. Unconditional, like orders. The full run is
+        // weekly: posted invoices never change once written.
+        $salesInvoicePageSize = (int) config('sync.import.sales_invoices.page_size');
+
+        $entry(
+            sprintf('bc:import-sales-invoices --page-size=%d', $salesInvoicePageSize),
+            (string) config('sync.import.sales_invoices.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-sales-invoices --full --page-size=%d', $salesInvoicePageSize),
+            (string) config('sync.import.sales_invoices.full_cron'),
+        );
+
+        // Posted sales credit memos: the same table and website post as
+        // invoices, from their own page. Same cadence, same weekly full run.
+        $salesCreditMemoPageSize = (int) config('sync.import.sales_credit_memos.page_size');
+
+        $entry(
+            sprintf('bc:import-sales-credit-memos --page-size=%d', $salesCreditMemoPageSize),
+            (string) config('sync.import.sales_credit_memos.cron'),
+        );
+
+        $entry(
+            sprintf('bc:import-sales-credit-memos --full --page-size=%d', $salesCreditMemoPageSize),
+            (string) config('sync.import.sales_credit_memos.full_cron'),
+        );
+
+        // Document attachments: the files hanging off items, customers and
+        // sales orders. Unconditional, like the rest. Swept on every run, so
+        // there is one entry rather than an incremental and a full pair.
+        $entry(
+            sprintf('bc:import-document-attachments --page-size=%d', (int) config('sync.import.document_attachments.page_size')),
+            (string) config('sync.import.document_attachments.cron'),
+        );
+
         // Registered only when explicitly enabled. Gating registration rather
         // than behaviour means that while delivery is disabled the entry does
         // not exist at all: there is nothing to fire by accident, and

@@ -32,11 +32,27 @@ final readonly class PayloadDiff
      * @var array<int, string>
      */
     public const ATOMIC_FIELDS = [
+        // Product
         'location',
         'brand',
         'categories',
         'attributes',
         'group_prices',
+        // Campaign. The audience is a set: a customer joining or leaving it
+        // means the whole normalised list is resent, because a positional
+        // merge into a sorted array would silently reassign entries.
+        'customers',
+        // Customer. The ship-to list is a set of whole addresses; a positional
+        // merge would silently reassign one customer's address to another.
+        'shipping_addresses',
+        // Contact. The billing block is one address; half of one is not an
+        // address the website could store.
+        'billing',
+        // Sales order. Each list is a set of whole documents; a positional
+        // merge would silently move a quantity from one line to another.
+        'items',
+        'sales_shipments',
+        'sales_invoices',
     ];
 
     /**

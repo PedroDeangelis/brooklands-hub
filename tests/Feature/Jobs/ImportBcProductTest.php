@@ -226,9 +226,9 @@ class ImportBcProductTest extends TestCase
      *
      * @param  array<string, mixed>  $row
      */
-    private function runJob(array $row): void
+    private function runJob(array $row, bool $force = false): void
     {
-        $this->app->call([new ImportBcProduct($row), 'handle']);
+        $this->app->call([new ImportBcProduct($row, $force), 'handle']);
     }
 
     /**
@@ -252,5 +252,30 @@ class ImportBcProductTest extends TestCase
                 'dimensionValueName' => 'Dog',
             ]],
         ];
+    }
+
+    // ------------------------------------------------------------------ force
+
+    /**
+     * The whole point of --force: a product that has not moved is delivered
+     * anyway, so a website that has drifted can be put back in step.
+     */
+    public function test_force_dispatches_an_unchanged_product(): void
+    {
+        $this->runJob($this->row());
+        Queue::assertPushed(DeliverProductToWebsite::class, 1);
+
+        // Normally this second import would open nothing.
+        $this->runJob($this->row(), force: true);
+
+        Queue::assertPushed(DeliverProductToWebsite::class, 2);
+    }
+
+    public function test_an_unchanged_product_dispatches_nothing_without_force(): void
+    {
+        $this->runJob($this->row());
+        $this->runJob($this->row());
+
+        Queue::assertPushed(DeliverProductToWebsite::class, 1);
     }
 }

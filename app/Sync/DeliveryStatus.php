@@ -2,7 +2,9 @@
 
 namespace App\Sync;
 
+use App\Contacts\ContactEligibility;
 use App\Enums\SyncStatus;
+use App\Models\Contact;
 use App\Models\Product;
 use App\Models\SyncRecord;
 use App\Products\WebsiteEligibility;
@@ -77,6 +79,81 @@ enum DeliveryStatus: string
         };
     }
 
+    /**
+     * Decide how far the website is from the desired state for a campaign.
+     *
+     * The same states mean the same things as for a product; only the fallback
+     * differs. A campaign with no ledger row has never been considered for
+     * delivery, and there is no "not applicable" case because a campaign is
+     * always wanted on the website — Laravel mirrors every campaign it knows
+     * about and the website decides what to show.
+     */
+    public static function forCampaign(?SyncRecord $record): self
+    {
+        return self::forMirrored($record);
+    }
+
+    /**
+     * Customers are mirrored like campaigns: always wanted, never "not applicable".
+     */
+    public static function forCustomer(?SyncRecord $record): self
+    {
+        return self::forMirrored($record);
+    }
+
+    /**
+     * Sales orders are mirrored like customers: always wanted, never "not
+     * applicable". A completed order stays on the website as history.
+     */
+    public static function forSalesOrder(?SyncRecord $record): self
+    {
+        return self::forMirrored($record);
+    }
+
+    /**
+     * Posted invoices are mirrored like orders: always wanted, never removed.
+     */
+    public static function forSalesInvoice(?SyncRecord $record): self
+    {
+        return self::forMirrored($record);
+    }
+
+    /**
+     * Decide how far the website is from the desired state for a contact.
+     *
+     * Contacts follow the product rule rather than the mirrored one: most are
+     * never wanted on the website, so a contact with no ledger row is "not
+     * applicable" unless it qualifies. A contact that was delivered and has
+     * since stopped qualifying still reads from its ledger row — it is not
+     * removed, and the dashboard shows the contradiction instead.
+     */
+    public static function forContact(Contact $contact, ContactEligibility $eligibility, ?SyncRecord $record): self
+    {
+        if ($record === null) {
+            return $eligibility->isEligible($contact) ? self::NotSynced : self::NotApplicable;
+        }
+
+        return self::forMirrored($record);
+    }
+
+    /**
+     * The shared rule for an entity that is always wanted on the website.
+     */
+    private static function forMirrored(?SyncRecord $record): self
+    {
+        if ($record === null) {
+            return self::NotSynced;
+        }
+
+        return match ($record->status) {
+            SyncStatus::Pending => self::Pending,
+            SyncStatus::Syncing => self::Syncing,
+            SyncStatus::Failed => self::Failed,
+            SyncStatus::Conflict => self::Conflict,
+            SyncStatus::Synced => $record->isDelivered() ? self::Synced : self::Pending,
+        };
+    }
+
     public function label(): string
     {
         return match ($this) {
@@ -120,7 +197,7 @@ enum DeliveryStatus: string
             self::Syncing => 'A delivery is in progress.',
             self::Synced => 'The website matches the desired state.',
             self::Failed => 'Delivery to the website failed.',
-            self::Conflict => 'The website already uses this SKU or GTIN for a different product.',
+            self::Conflict => 'The website already uses this identity for a different record.',
             self::NotApplicable => 'Never delivered, and not wanted on the website.',
             self::NotSynced => 'Wanted on the website but not yet queued for delivery.',
         };

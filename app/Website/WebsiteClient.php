@@ -5,6 +5,7 @@ namespace App\Website;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use RuntimeException;
 
 /**
  * Posts one delivery to the website and reports what came back.
@@ -155,6 +156,72 @@ class WebsiteClient
         }
 
         return $response->body() === '' ? 'empty response body' : $response->body();
+    }
+
+    /**
+     * Ask the website which of these records it actually holds right now.
+     *
+     * Read-only, and deliberately separate from deliver(): a delivery reports
+     * what happened at the moment it ran, and cannot know that the post was
+     * removed afterwards. Without this, a ledger row saying "synced" is a
+     * claim nobody can check.
+     *
+     * Returns a map of bc_id to the website's answer, with null meaning the
+     * record is absent. A bc_id missing from the response is treated as absent
+     * by the caller.
+     *
+     * @param  array<int, string>  $bcIds
+     * @return array<string, array{wp_id: int, status: string}|null>
+     *
+     * @throws WebsiteConfigurationException when the destination is not configured.
+     */
+    public function status(string $entity, array $bcIds): array
+    {
+        if ($bcIds === []) {
+            return [];
+        }
+
+        $url = $this->statusEndpoint();
+        $raw = $this->signer->encode([
+            'entity' => $entity,
+            'bc_ids' => array_values($bcIds),
+        ]);
+
+        $response = Http::withHeaders($this->signer->headers($raw))
+            ->withBody($raw, 'application/json')
+            ->timeout((int) config('services.website.timeout', 30))
+            ->connectTimeout((int) config('services.website.connect_timeout', 10))
+            ->withoutRedirecting()
+            ->post($url);
+
+        if ($response->failed()) {
+            throw new RuntimeException(sprintf(
+                'The website could not report status (HTTP %d).',
+                $response->status(),
+            ));
+        }
+
+        $records = $this->decode($response)['records'] ?? [];
+
+        return is_array($records) ? $records : [];
+    }
+
+    /**
+     * The status route, derived from the delivery URL.
+     *
+     * Same host and same secret; only the final path segment differs, so there
+     * is nothing extra to configure and no second destination to keep in step.
+     */
+    private function statusEndpoint(): string
+    {
+        $endpoint = $this->endpoint();
+        $path = parse_url($endpoint, PHP_URL_PATH);
+
+        if (! is_string($path) || $path === '') {
+            return rtrim($endpoint, '/').'/status';
+        }
+
+        return substr($endpoint, 0, -strlen($path)).preg_replace('#/[^/]+$#', '/status', $path);
     }
 
     /**

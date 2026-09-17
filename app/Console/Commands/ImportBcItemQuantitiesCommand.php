@@ -37,6 +37,7 @@ use Illuminate\Support\Facades\Log;
     {--page-size=200 : How many rows to request per Business Central call}
     {--top= : Stop after this many rows in total (manual testing)}
     {--full : Sweep the complete catalogue (the default; accepted for symmetry with bc:import-items)}
+    {--force : Re-deliver every fetched row even when the figures have not moved}
     {--sku= : Fetch one item\'s figures by its Business Central number (manual testing)}')]
 #[Description('Fetch stock figures from Business Central and queue an import job for each one')]
 class ImportBcItemQuantitiesCommand extends Command
@@ -46,6 +47,7 @@ class ImportBcItemQuantitiesCommand extends Command
         $pageSize = (int) $this->option('page-size');
         $limit = $this->option('top') === null ? null : (int) $this->option('top');
         $sku = trim((string) $this->option('sku'));
+        $force = (bool) $this->option('force');
 
         if ($pageSize < 1) {
             $this->error('--page-size must be a positive integer.');
@@ -59,8 +61,20 @@ class ImportBcItemQuantitiesCommand extends Command
             return self::FAILURE;
         }
 
+        // --force needs no --full here: this command always sweeps the whole
+        // endpoint, so there is no narrower fetch for it to contradict.
+        if ($force && ! $this->forceIsAllowed($limit, $sku)) {
+            return self::FAILURE;
+        }
+
         if ($sku !== '') {
             return $this->importOneSku($client, $sku);
+        }
+
+        if ($force && ! $this->confirmForce()) {
+            $this->line('Nothing was fetched or queued.');
+
+            return self::SUCCESS;
         }
 
         $this->line(sprintf(
@@ -78,8 +92,8 @@ class ImportBcItemQuantitiesCommand extends Command
                 ItemQuantitiesQuery::VERSION,
                 ItemQuantitiesQuery::ENTITY_SET,
                 fn (int $ask, int $fetched): array => ItemQuantitiesQuery::page($ask, $fetched),
-                function (array $row) use (&$queued): void {
-                    ImportBcProductQuantity::dispatch($row);
+                function (array $row) use (&$queued, $force): void {
+                    ImportBcProductQuantity::dispatch($row, $force);
                     $queued++;
                 },
                 $pageSize,
@@ -122,6 +136,50 @@ class ImportBcItemQuantitiesCommand extends Command
     /**
      * Fetch and queue one item's stock figures.
      */
+    /**
+     * Whether --force makes sense alongside the other options given.
+     *
+     * No --full requirement: this command sweeps the whole endpoint on every
+     * run, so --full is already a no-op here. --top and --sku still read a
+     * subset, and forcing one of those would re-send an arbitrary slice.
+     */
+    private function forceIsAllowed(?int $limit, string $sku): bool
+    {
+        if ($limit !== null) {
+            $this->error('--force cannot be combined with --top.');
+
+            return false;
+        }
+
+        if ($sku !== '') {
+            $this->error('--force cannot be combined with --sku.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check the operator meant it.
+     *
+     * Gated on whether there is anyone to ask. Under --no-interaction the
+     * input is non-interactive and the run proceeds: a scheduled or scripted
+     * caller has already stated its intent on the command line, and prompting
+     * into a void would abort it.
+     */
+    private function confirmForce(): bool
+    {
+        $this->warn('Forcing re-delivery of every stock figure.');
+        $this->line('Each row will be queued for WordPress even if the figures have not moved.');
+
+        if (! $this->input->isInteractive()) {
+            return true;
+        }
+
+        return $this->confirm('Continue?', false);
+    }
+
     private function importOneSku(BusinessCentralClient $client, string $sku): int
     {
         $this->line(sprintf('Fetching stock figures for %s.', $sku));

@@ -29,8 +29,12 @@ class ImportBcProductQuantity implements ShouldQueue
 
     /**
      * @param  array<string, mixed>  $row  A raw itemQuantities row from Business Central.
+     * @param  bool  $force  Deliver even when the figures have not moved, for a deliberate resync.
      */
-    public function __construct(public readonly array $row) {}
+    public function __construct(
+        public readonly array $row,
+        public readonly bool $force = false,
+    ) {}
 
     public function handle(ProductQuantityImporter $importer, SyncLedger $ledger): void
     {
@@ -57,11 +61,14 @@ class ImportBcProductQuantity implements ShouldQueue
         // turns a stock movement into a delivery.
         $record = null;
 
-        if ($result->changed()) {
+        // A forced run delivers whatever the figures say: the point is to put
+        // the website back in step, and an unchanged quantity is exactly the
+        // row a drifted website is most likely to be missing.
+        if ($this->force || $result->changed()) {
             $product = Product::query()->where('bc_id', $quantity->bc_id)->first();
 
             if ($product !== null) {
-                $record = $ledger->reconcile($product, $result->changedFields);
+                $record = $ledger->reconcile($product, $result->changedFields, force: $this->force);
 
                 if ($record !== null) {
                     DeliverProductToWebsite::dispatch($product->bc_id);
@@ -75,6 +82,7 @@ class ImportBcProductQuantity implements ShouldQueue
             'quantity_id' => $quantity->id,
             'created' => $result->created,
             'changed_fields' => $result->changedFields,
+            'forced' => $this->force,
             'delivery_queued' => $record !== null,
         ]);
     }

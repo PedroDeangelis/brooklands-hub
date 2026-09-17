@@ -2,6 +2,7 @@
 
 namespace App\Sync\Payload;
 
+use App\DocumentAttachments\AttachmentParentType;
 use App\Models\Product;
 use App\Products\ProductWebsiteState;
 use App\Products\ProductWebsiteStateBuilder;
@@ -56,6 +57,11 @@ class ProductWebsitePayloadBuilder
             'sku' => $state->sku,
             'name' => $state->name,
             'name_2' => trim((string) $product->name_2),
+            // Already sanitised at import. Sent as '' rather than omitted when
+            // there is no copy, so removing a description in Business Central
+            // clears it on the website instead of leaving the old one there.
+            'description' => $state->description,
+            'short_description' => $state->shortDescription,
             'price' => $state->price,
             'rrp' => $state->rrp,
             'purchasable' => $state->isPurchasable(),
@@ -70,6 +76,14 @@ class ProductWebsitePayloadBuilder
             'shipping_class' => $state->shippingClass,
             'attributes' => $this->attributes($state->attributes),
             'group_prices' => $this->groupPrices($state->pricingRules),
+            // Replaced whole, never merged: the sweep that imports attachments
+            // is the only thing that knows a file has been deleted, so a
+            // partial list here would leave removed files on the website.
+            //
+            // Absent from the removal payload on purpose: a product being taken
+            // down has no files to show, and the removal carries identity and
+            // reasons only.
+            'attachments' => AttachmentsPayload::for(AttachmentParentType::Product, (string) $product->bc_id),
         ];
     }
 
